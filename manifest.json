@@ -1,0 +1,21 @@
+{
+  "name": "קליסטניקס — מעקב אימונים",
+  "short_name": "קליסטניקס",
+  "description": "מעקב אישי לאימוני קליסטניקס",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0c1209",
+  "theme_color": "#0c1209",
+  "orientation": "portrait-primary",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
