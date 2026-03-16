@@ -102,16 +102,45 @@ function getDailyQuote(name) {
   return quote.replace('{name}', name || 'מתאמן');
 }
 
+// ── Voice / TTS ──────────────────────────────
+function speakHebrew(text) {
+  if (!window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = 'he-IL';
+    utt.rate = 0.9;
+    window.speechSynthesis.speak(utt);
+  } catch (e) {}
+}
+
+// ── Parse target max seconds from strings like '10–30' ──
+function parseTargetMax(target) {
+  const nums = String(target).match(/\d+/g);
+  if (!nums) return 30;
+  return parseInt(nums[nums.length - 1]);
+}
+
 // ── State ───────────────────────────────────
 const state = {
   tab:            'home',
   workouts:       [],   // saved workouts
   measurements:   [],   // saved measurements
   active:         null, // in-progress workout session
-  timer:          null, // { interval, secs }
+  timer:          null, // { interval, secs, onComplete }
+  exTimer:        null, // { interval, secs, total, running } — exercise hold timer
   selType:        'A',  // selected workout type in selector
   charts:         {},   // Chart.js instances
+  progressCharts: {},   // Chart.js instances for exercise progress
   meta:           { name: '', stage: '' }, // trainee info from PDF
+  progressTab:    false, // true = show progress charts in history
+  // ── Nutrition ──────────────────────────────
+  nutritionTargets: null, // { cal, protein, carbs, fat }
+  foods:            [],   // food product list
+  foodLog:          [],   // all-time food log
+  nutritionSubTab:  'today',
+  showAddFood:      false,
+  showAddProduct:   false,
 };
 
 // ── Storage ─────────────────────────────────
@@ -121,16 +150,28 @@ function save() {
 }
 
 function load() {
-  const w = localStorage.getItem('cali_workouts');
-  const m = localStorage.getItem('cali_measurements');
-  const p = localStorage.getItem('cali_plan');
-  const l = localStorage.getItem('cali_links');
+  const w  = localStorage.getItem('cali_workouts');
+  const m  = localStorage.getItem('cali_measurements');
+  const p  = localStorage.getItem('cali_plan');
+  const l  = localStorage.getItem('cali_links');
   const mt = localStorage.getItem('cali_meta');
-  state.workouts     = w ? JSON.parse(w) : [];
-  state.measurements = m ? JSON.parse(m) : [];
+  const nt = localStorage.getItem('cali_nutrition_targets');
+  const nf = localStorage.getItem('cali_foods');
+  const nl = localStorage.getItem('cali_food_log');
+  state.workouts          = w  ? JSON.parse(w)  : [];
+  state.measurements      = m  ? JSON.parse(m)  : [];
+  state.nutritionTargets  = nt ? JSON.parse(nt) : null;
+  state.foods             = nf ? JSON.parse(nf) : [];
+  state.foodLog           = nl ? JSON.parse(nl) : [];
   if (p) PLANS = JSON.parse(p);
   LINKS = l ? JSON.parse(l) : {};
   if (mt) state.meta = JSON.parse(mt);
+}
+
+function saveNutrition() {
+  localStorage.setItem('cali_nutrition_targets', JSON.stringify(state.nutritionTargets));
+  localStorage.setItem('cali_foods',             JSON.stringify(state.foods));
+  localStorage.setItem('cali_food_log',          JSON.stringify(state.foodLog));
 }
 
 function saveMeta(name, stage) {
@@ -232,11 +273,20 @@ function render(tab) {
     clearInterval(state.active.countdownInterval);
     state.active.countdownInterval = null;
   }
+  // Reset transient nutrition UI when leaving the tab
+  if (tab !== 'nutrition') {
+    state.showAddFood    = false;
+    state.showAddProduct = false;
+  }
   switch (tab) {
     case 'home':         main.innerHTML = viewHome();         break;
     case 'workout':      main.innerHTML = viewWorkout();      bindWorkout(); break;
     case 'measurements': main.innerHTML = viewMeasurements(); bindMeasurements(); renderCharts(); break;
-    case 'history':      main.innerHTML = viewHistory();      break;
+    case 'history':
+      main.innerHTML = viewHistory();
+      if (state.progressTab) renderProgressCharts();
+      break;
+    case 'nutrition':    main.innerHTML = viewNutrition();    bindNutrition(); break;
   }
   main.scrollTop = 0;
 }
@@ -441,9 +491,9 @@ function selType(t) {
 function startWorkout() {
   const plan = PLANS[state.selType];
   state.active = {
-    type:              state.selType,
-    startTime:         Date.now(),
-    exercises:         plan.exercises.map(ex => ({
+    type:                     state.selType,
+    startTime:                Date.now(),
+    exercises:                plan.exercises.map(ex => ({
       name:   ex.name,
       unit:   ex.unit,
       type:   ex.type,
@@ -451,12 +501,13 @@ function startWorkout() {
       target: ex.target,
       sets:   Array.from({ length: ex.sets }, () => ({ value: '', done: false }))
     })),
-    exIdx:             0,       // current exercise index
-    phase:             'countdown', // 'countdown' | 'workout'
-    countdownSecs:     20,
-    countdownInterval: null,
-    resting:           false,   // true while rest timer runs between sets
-    lastSetAnimation:  false,   // triggers arm flex animation
+    exIdx:                    0,
+    phase:                    'countdown',
+    countdownSecs:            20,
+    countdownInterval:        null,
+    resting:                  false,   // rest between sets
+    restingBetweenExercises:  false,   // rest between exercises
+    lastSetAnimation:         false,
   };
   render('workout');
 }
@@ -467,10 +518,18 @@ function viewActiveWorkout() {
 }
 
 function viewCountdownScreen() {
-  const plan = PLANS[state.active.type];
+  const plan    = PLANS[state.active.type];
   const firstEx = state.active.exercises[0];
+  const wType   = state.active.type;
+  const warmupUrl = wType === 'legs'
+    ? (LINKS.warmup?.lower || (DEFAULT_LINKS.warmup && DEFAULT_LINKS.warmup.lower))
+    : (LINKS.warmup?.upper || (DEFAULT_LINKS.warmup && DEFAULT_LINKS.warmup.upper));
+  const warmupBtn = warmupUrl
+    ? `<button class="warmup-btn" onclick="openLink('${warmupUrl}')">🔥 סרטון חימום לפני האימון</button>`
+    : '';
   return `<div class="view countdown-view">
     <button class="back-to-sel-btn" onclick="backToSelector()">← חזור לבחירה</button>
+    ${warmupBtn}
     <div class="countdown-content">
       <div class="countdown-plan">${plan.name}</div>
       <div class="countdown-title">מתחיל בעוד</div>
@@ -497,41 +556,22 @@ function buildArmIcon(doneSets, totalSets, flexAnim) {
 }
 
 function viewCurrentExercise() {
-  const exs    = state.active.exercises;
-  const exIdx  = state.active.exIdx;
-  const ex     = exs[exIdx];
+  const exs     = state.active.exercises;
+  const exIdx   = state.active.exIdx;
+  const ex      = exs[exIdx];
   const totalSets  = ex.sets.length;
   const doneSets   = ex.sets.filter(s => s.done).length;
-  const allSetsDone = doneSets === totalSets;
-  const armHTML = buildArmIcon(doneSets, totalSets, state.active.lastSetAnimation);
-  const vUrl = getExLink(ex.name);
-  const isLastEx = exIdx === exs.length - 1;
+  const isLastEx   = exIdx === exs.length - 1;
+  const armHTML    = buildArmIcon(doneSets, totalSets, state.active.lastSetAnimation);
+  const vUrl       = getExLink(ex.name);
 
-  // NAV bar (top row)
   const navBar = `<div class="ex-nav">
     <button class="back-to-sel-btn" onclick="backToSelector()">← חזור</button>
     <span class="ex-progress-lbl">${exIdx + 1} / ${exs.length}</span>
     ${armHTML}
   </div>`;
 
-  // ── All sets done for this exercise ──
-  if (allSetsDone) {
-    return `<div class="view exercise-view">
-      ${navBar}
-      <div class="ex-focused-card done-card">
-        <div class="ex-focused-name">${ex.name}</div>
-        <div class="ex-focused-done-label">✓ הושלם!</div>
-      </div>
-      ${isLastEx
-        ? `<button class="big-btn big-btn-green" onclick="completeWorkout()" style="margin-top:auto">✓ סיום אימון</button>`
-        : `<button class="big-btn big-btn-green" onclick="goNextExercise()" style="margin-top:auto">
-            התרגיל הבא: ${exs[exIdx + 1].name} ←
-           </button>`
-      }
-    </div>`;
-  }
-
-  // ── Resting between sets ──
+  // ── Phase: rest between SETS ──
   if (state.active.resting) {
     return `<div class="view exercise-view">
       ${navBar}
@@ -541,7 +581,7 @@ function viewCurrentExercise() {
       </div>
       <div class="rest-focused">
         <div class="timer-lbl">מנוחה</div>
-        <div class="timer-val ${state.timer && state.timer.secs <= 0 ? 'done' : ''}" id="timer-val">
+        <div class="timer-val" id="timer-val">
           ${state.timer ? fmtSecs(state.timer.secs) : '00:00'}
         </div>
         <div class="rest-next-lbl">הכן עצמך לסט ${doneSets + 1} מתוך ${totalSets}</div>
@@ -553,15 +593,71 @@ function viewCurrentExercise() {
     </div>`;
   }
 
-  // ── Active set input ──
+  // ── Phase: rest between EXERCISES (last set done, not last exercise) ──
+  if (state.active.restingBetweenExercises && !isLastEx) {
+    const nextEx = exs[exIdx + 1];
+    return `<div class="view exercise-view">
+      ${navBar}
+      <div class="ex-focused-card done-card">
+        <div class="ex-focused-name">${ex.name}</div>
+        <div class="ex-focused-done-label">✓ הושלם!</div>
+      </div>
+      <div class="rest-focused">
+        <div class="timer-lbl">מנוחה · הכן עצמך ל:</div>
+        <div class="rest-next-lbl" style="font-size:16px;font-weight:700;color:var(--t);margin-bottom:4px">${nextEx.name}</div>
+        <div class="timer-val" id="timer-val">
+          ${state.timer ? fmtSecs(state.timer.secs) : '00:00'}
+        </div>
+        <div class="timer-btns">
+          <button class="timer-btn" onclick="addTime(30)">+30 שניות</button>
+          <button class="timer-btn skip" onclick="skipToNextExercise()">התרגיל הבא ←</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // ── Phase: last exercise all sets done → finish ──
+  if (doneSets === totalSets && isLastEx) {
+    return `<div class="view exercise-view">
+      ${navBar}
+      <div class="ex-focused-card done-card">
+        <div class="ex-focused-name">${ex.name}</div>
+        <div class="ex-focused-done-label">✓ הושלם!</div>
+      </div>
+      <button class="big-btn big-btn-green" onclick="completeWorkout()" style="margin-top:auto">✓ סיום אימון</button>
+    </div>`;
+  }
+
+  // ── Phase: active set input ──
   const setNum = doneSets + 1;
   const currentSetObj = ex.sets[doneSets];
+
+  // Exercise hold-timer (for seconds-type exercises)
+  let exTimerHTML = '';
+  if (ex.type === 'seconds') {
+    const targetSecs  = parseTargetMax(ex.target);
+    const dispSecs    = state.exTimer ? state.exTimer.secs : targetSecs;
+    const isRunning   = state.exTimer?.running;
+    const isUrgent    = isRunning && dispSecs > 0 && dispSecs <= 5;
+    exTimerHTML = `<div class="ex-timer-box">
+      <div class="ex-timer-label">טיימר תרגיל · יעד: ${ex.target} ${ex.unit}</div>
+      <div class="ex-timer-val${isUrgent ? ' ex-timer-urgent' : ''}" id="ex-timer-val">${fmtSecs(dispSecs)}</div>
+      <div class="timer-btns" style="margin-top:8px">
+        ${!isRunning
+          ? `<button class="timer-btn skip" onclick="startExerciseTimer(${targetSecs})">▶ הפעל</button>`
+          : `<button class="timer-btn" onclick="stopExerciseTimer()">⏸ עצור</button>`}
+        <button class="timer-btn" onclick="resetExerciseTimer()">↺ אפס</button>
+      </div>
+    </div>`;
+  }
+
   return `<div class="view exercise-view">
     ${navBar}
     <div class="ex-focused-card">
       <div class="ex-focused-name">${ex.name}${vUrl ? `<button class="ex-link-btn" onclick="openLink('${vUrl}')">▶</button>` : ''}</div>
       <div class="ex-focused-meta">${totalSets} סטים × ${ex.target} ${ex.unit}</div>
     </div>
+    ${exTimerHTML}
     <div class="set-focus">
       <div class="set-focus-label">סט ${setNum} מתוך ${totalSets}</div>
       <div class="set-focus-row">
@@ -652,25 +748,39 @@ function completeCurrentSet() {
   const inputEl = document.getElementById('set-input-focused');
   const value = inputEl ? inputEl.value.trim() : '';
 
-  const set = ex.sets[doneSets];
-  set.value = value;
-  set.done = true;
+  ex.sets[doneSets].value = value;
+  ex.sets[doneSets].done  = true;
 
-  const newDone = ex.sets.filter(s => s.done).length;
-  const isLastSetOfExercise = newDone === ex.sets.length;
+  // Stop exercise hold-timer
+  stopExerciseTimer();
 
-  if (isLastSetOfExercise) {
+  const newDone  = ex.sets.filter(s => s.done).length;
+  const isLastSet = newDone === ex.sets.length;
+  const isLastEx  = state.active.exIdx === state.active.exercises.length - 1;
+
+  if (isLastSet) {
     state.active.lastSetAnimation = true;
-    state.active.resting = false;
-    render('workout');
-    // Vibrate for last set
     if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 300]);
-    // Clear animation flag after animation finishes
-    setTimeout(() => { state.active.lastSetAnimation = false; }, 2000);
+    setTimeout(() => { if (state.active) state.active.lastSetAnimation = false; }, 2000);
+
+    if (isLastEx) {
+      // Last set of last exercise → show finish button, no timer
+      state.active.resting = false;
+      state.active.restingBetweenExercises = false;
+      render('workout');
+    } else {
+      // Last set of exercise, but more exercises remain → rest between exercises
+      state.active.resting = false;
+      state.active.restingBetweenExercises = true;
+      render('workout');
+      startTimer(ex.rest, skipToNextExercise);
+    }
   } else {
+    // More sets in this exercise → rest between sets
     state.active.resting = true;
+    state.active.restingBetweenExercises = false;
     render('workout');
-    startTimer(ex.rest);
+    startTimer(ex.rest, skipTimerToSet);
     if (navigator.vibrate) navigator.vibrate([100]);
   }
 }
@@ -678,28 +788,48 @@ function completeCurrentSet() {
 function skipTimerToSet() {
   stopTimer();
   state.active.resting = false;
+  state.active.restingBetweenExercises = false;
+  stopExerciseTimer();
+  render('workout');
+}
+
+function skipToNextExercise() {
+  stopTimer();
+  state.active.restingBetweenExercises = false;
+  state.active.resting = false;
+  state.active.exIdx++;
+  state.active.lastSetAnimation = false;
+  stopExerciseTimer();
   render('workout');
 }
 
 function goNextExercise() {
   state.active.exIdx++;
   state.active.resting = false;
+  state.active.restingBetweenExercises = false;
   state.active.lastSetAnimation = false;
+  stopExerciseTimer();
   render('workout');
 }
 
-function startTimer(secs) {
+function startTimer(secs, onComplete) {
   stopTimer();
-  state.timer = { secs };
-  const timerEl = document.getElementById('rest-timer');
-  if (timerEl) timerEl.classList.add('active');
+  state.timer = { secs, onComplete: onComplete || null };
   updateTimerDisplay();
 
   state.timer.interval = setInterval(() => {
     state.timer.secs--;
     updateTimerDisplay();
+
+    // Voice announcements
+    if (state.timer.secs === 30) speakHebrew('שלושים שניות נותרו');
+    if (state.timer.secs >= 1 && state.timer.secs <= 5) speakHebrew(String(state.timer.secs));
+
     if (state.timer.secs <= 0) {
       if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      const cb = state.timer.onComplete;
+      stopTimer();
+      if (cb) cb();
     }
   }, 1000);
 }
@@ -735,6 +865,53 @@ function stopTimer() {
     clearInterval(state.timer.interval);
     state.timer = null;
   }
+}
+
+// ── Exercise hold-timer (for seconds-type exercises) ──
+function startExerciseTimer(totalSecs) {
+  stopExerciseTimer();
+  state.exTimer = { secs: totalSecs, total: totalSecs, running: true, interval: null };
+  updateExTimerDisplay();
+
+  state.exTimer.interval = setInterval(() => {
+    if (!state.exTimer) return;
+    state.exTimer.secs--;
+    updateExTimerDisplay();
+
+    if (state.exTimer.secs >= 1 && state.exTimer.secs <= 5) {
+      speakHebrew(String(state.exTimer.secs));
+      if (navigator.vibrate) navigator.vibrate([60]);
+    }
+
+    if (state.exTimer.secs <= 0) {
+      clearInterval(state.exTimer.interval);
+      state.exTimer.running = false;
+      if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
+      updateExTimerDisplay();
+      // Re-render to update button state (not auto-advance)
+      render('workout');
+    }
+  }, 1000);
+}
+
+function stopExerciseTimer() {
+  if (state.exTimer) {
+    clearInterval(state.exTimer.interval);
+    state.exTimer = null;
+  }
+}
+
+function resetExerciseTimer() {
+  stopExerciseTimer();
+  render('workout'); // show fresh timer
+}
+
+function updateExTimerDisplay() {
+  const el = document.getElementById('ex-timer-val');
+  if (!el || !state.exTimer) return;
+  el.textContent = fmtSecs(state.exTimer.secs);
+  const isUrgent = state.exTimer.running && state.exTimer.secs > 0 && state.exTimer.secs <= 5;
+  el.classList.toggle('ex-timer-urgent', isUrgent);
 }
 
 function cancelWorkout() {
@@ -915,8 +1092,16 @@ function renderCharts() {
 //  HISTORY VIEW
 // ══════════════════════════════════════════════
 function viewHistory() {
+  const tabToggle = `<div class="hist-tab-row">
+    <button class="hist-tab-btn${!state.progressTab ? ' active' : ''}" onclick="state.progressTab=false;render('history')">היסטוריה</button>
+    <button class="hist-tab-btn${state.progressTab ? ' active' : ''}" onclick="state.progressTab=true;render('history')">📊 התקדמות</button>
+  </div>`;
+
+  if (state.progressTab) return viewProgressCharts(tabToggle);
+
   if (!state.workouts.length) {
     return `<div class="view">
+      ${tabToggle}
       <div class="empty">
         <div class="empty-icon">⚔</div>
         <div class="empty-text">עדיין אין אימונים.<br>לחץ על "אימון" כדי להתחיל!</div>
@@ -959,9 +1144,123 @@ function viewHistory() {
   }).join('');
 
   return `<div class="view">
+    ${tabToggle}
     <div class="sec-label">${state.workouts.length} אימונים בסה"כ</div>
     ${items}
   </div>`;
+}
+
+// ── Exercise Progress Data ─────────────────────
+function getExerciseProgressData() {
+  const exercises = {};
+  state.workouts.forEach(w => {
+    w.exercises.forEach(ex => {
+      if (!exercises[ex.name]) exercises[ex.name] = { pts: [], unit: '' };
+      const vals = ex.sets.map(s => parseFloat(s.value)).filter(v => !isNaN(v) && v > 0);
+      if (vals.length) {
+        exercises[ex.name].pts.push({
+          date:  w.date,
+          max:   Math.max(...vals),
+          total: vals.reduce((a, b) => a + b, 0),
+          count: vals.length,
+        });
+        if (ex.sets[0]?.unit) exercises[ex.name].unit = ex.sets[0].unit;
+      }
+    });
+  });
+  return exercises;
+}
+
+function viewProgressCharts(tabToggle = '') {
+  const exercises = getExerciseProgressData();
+  const names = Object.keys(exercises);
+
+  if (!names.length) {
+    return `<div class="view">
+      ${tabToggle}
+      <div class="empty">
+        <div class="empty-icon">📊</div>
+        <div class="empty-text">אין עדיין נתונים לגרפים.<br>השלם אימון כדי לראות התקדמות!</div>
+      </div>
+    </div>`;
+  }
+
+  const cards = names.map((name, i) => {
+    const { pts, unit } = exercises[name];
+    const sorted = [...pts].sort((a, b) => a.date.localeCompare(b.date));
+    const latest = sorted[sorted.length - 1];
+    return `<div class="chart-card">
+      <div class="chart-title">${name}</div>
+      <div class="chart-current">
+        ${latest ? `${latest.max} <span class="unit">${unit}</span>` : ''}
+        <span style="font-size:11px;color:var(--t-dim);margin-right:6px">(מקסימום לאימון)</span>
+      </div>
+      ${sorted.length > 1
+        ? `<div class="chart-wrap"><canvas id="prog-${i}"></canvas></div>`
+        : `<div class="chart-empty">נדרשים לפחות 2 אימונים לגרף</div>`}
+    </div>`;
+  }).join('');
+
+  return `<div class="view">
+    ${tabToggle}
+    <div class="sec-label">התקדמות לפי תרגיל</div>
+    ${cards}
+  </div>`;
+}
+
+function renderProgressCharts() {
+  Object.values(state.progressCharts).forEach(c => c.destroy());
+  state.progressCharts = {};
+
+  const exercises = getExerciseProgressData();
+  const names = Object.keys(exercises);
+
+  names.forEach((name, i) => {
+    const { pts, unit } = exercises[name];
+    const sorted = [...pts].sort((a, b) => a.date.localeCompare(b.date));
+    if (sorted.length < 2) return;
+    const canvas = document.getElementById(`prog-${i}`);
+    if (!canvas) return;
+
+    state.progressCharts[name] = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: sorted.map(p => { const d = new Date(p.date); return `${d.getDate()}/${d.getMonth()+1}`; }),
+        datasets: [{
+          data:                sorted.map(p => p.max),
+          label:               unit,
+          borderColor:         '#0ca678',
+          backgroundColor:     'rgba(12,166,120,0.10)',
+          borderWidth:         2,
+          pointBackgroundColor:'#0ca678',
+          pointRadius:         4,
+          pointHoverRadius:    6,
+          fill:                true,
+          tension:             0.35,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#ffffff',
+            borderColor:     '#0ca678',
+            borderWidth:     1,
+            titleColor:      '#6b7280',
+            bodyColor:       '#0ca678',
+            titleFont:       { family: 'Rubik', size: 10 },
+            bodyFont:        { family: 'Rubik', size: 14, weight: '700' },
+          }
+        },
+        scales: {
+          x: { grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { color: '#9ca3af', font: { size: 10 } }, border: { color: 'rgba(0,0,0,0.10)' } },
+          y: { grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { color: '#9ca3af', font: { size: 10 } }, border: { color: 'rgba(0,0,0,0.10)' } }
+        }
+      }
+    });
+  });
 }
 
 function toggleHist(id) {
@@ -1179,6 +1478,278 @@ function finishSetup() {
     `${DAYS_FULL[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]}`;
   render('home');
   toast('התוכנית נטענה! 💪');
+}
+
+// ══════════════════════════════════════════════
+//  NUTRITION VIEW
+// ══════════════════════════════════════════════
+
+// ── Helpers ───────────────────────────────────
+function todayFoodLog() {
+  return state.foodLog.filter(e => e.date === todayStr());
+}
+
+function computeEntry(entry) {
+  const food = state.foods.find(f => f.id === entry.foodId);
+  if (!food) return { cal: 0, protein: 0, carbs: 0, fat: 0 };
+  const k = entry.grams / 100;
+  return {
+    cal:     +(food.per100.cal     * k).toFixed(0),
+    protein: +(food.per100.protein * k).toFixed(1),
+    carbs:   +(food.per100.carbs   * k).toFixed(1),
+    fat:     +(food.per100.fat     * k).toFixed(1),
+  };
+}
+
+function todayTotals() {
+  const t = { cal: 0, protein: 0, carbs: 0, fat: 0 };
+  todayFoodLog().forEach(e => {
+    const c = computeEntry(e);
+    t.cal     += c.cal;
+    t.protein += +c.protein;
+    t.carbs   += +c.carbs;
+    t.fat     += +c.fat;
+  });
+  return {
+    cal:     Math.round(t.cal),
+    protein: +t.protein.toFixed(1),
+    carbs:   +t.carbs.toFixed(1),
+    fat:     +t.fat.toFixed(1),
+  };
+}
+
+function macroBar(label, val, target, color) {
+  const pct = target > 0 ? Math.min(100, Math.round(val / target * 100)) : 0;
+  const rem = +(Math.max(0, target - val)).toFixed(1);
+  const over = val > target;
+  return `<div class="macro-bar-wrap">
+    <div class="macro-bar-top">
+      <span class="macro-bar-label">${label}</span>
+      <span class="macro-bar-nums${over ? ' macro-over' : ''}">${val} / ${target}</span>
+    </div>
+    <div class="macro-bar-track">
+      <div class="macro-bar-fill" style="width:${pct}%;background:${color}"></div>
+    </div>
+    <div class="macro-bar-rem">${over ? `חרגת ב-${+(val - target).toFixed(1)}` : `נשאר: ${rem}`}</div>
+  </div>`;
+}
+
+function nutritionSubNav() {
+  return `<div class="hist-tab-row">
+    <button class="hist-tab-btn${state.nutritionSubTab === 'today' ? ' active' : ''}"
+      onclick="state.nutritionSubTab='today';render('nutrition')">היום</button>
+    <button class="hist-tab-btn${state.nutritionSubTab === 'products' ? ' active' : ''}"
+      onclick="state.nutritionSubTab='products';render('nutrition')">רשימת מוצרים</button>
+  </div>`;
+}
+
+// ── Router ────────────────────────────────────
+function viewNutrition() {
+  if (!state.nutritionTargets) return viewNutritionSetup();
+  if (state.nutritionSubTab === 'products') return viewNutritionProducts();
+  return viewNutritionToday();
+}
+
+// ── Setup (first time / edit targets) ─────────
+function viewNutritionSetup() {
+  const t = state.nutritionTargets || {};
+  return `<div class="view">
+    <div class="meas-form">
+      <div class="form-title">יעדים תזונתיים יומיים</div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="form-lbl">קלוריות יומיות</label>
+          <input class="form-inp" type="number" inputmode="decimal" id="target-cal" placeholder="2000" value="${t.cal || ''}">
+        </div>
+        <div class="form-field">
+          <label class="form-lbl">חלבון (גרם)</label>
+          <input class="form-inp" type="number" inputmode="decimal" id="target-protein" placeholder="150" value="${t.protein || ''}">
+        </div>
+        <div class="form-field">
+          <label class="form-lbl">פחמימות (גרם)</label>
+          <input class="form-inp" type="number" inputmode="decimal" id="target-carbs" placeholder="200" value="${t.carbs || ''}">
+        </div>
+        <div class="form-field">
+          <label class="form-lbl">שומן (גרם)</label>
+          <input class="form-inp" type="number" inputmode="decimal" id="target-fat" placeholder="70" value="${t.fat || ''}">
+        </div>
+      </div>
+      <button class="form-submit" id="save-targets-btn">שמור יעדים</button>
+    </div>
+  </div>`;
+}
+
+// ── Today's log view ──────────────────────────
+function viewNutritionToday() {
+  const t      = state.nutritionTargets;
+  const totals = todayTotals();
+  const entries = todayFoodLog();
+
+  const macros = `<div class="nutrition-macros">
+    ${macroBar('קלוריות', totals.cal, t.cal, 'var(--gold)')}
+    ${macroBar('חלבון', totals.protein, t.protein, 'var(--p)')}
+    ${macroBar('פחמימות', totals.carbs, t.carbs, '#3b82f6')}
+    ${macroBar('שומן', totals.fat, t.fat, 'var(--a)')}
+  </div>`;
+
+  const logItems = entries.length
+    ? [...entries].reverse().map(entry => {
+        const food = state.foods.find(f => f.id === entry.foodId);
+        const c = computeEntry(entry);
+        return `<div class="food-log-item">
+          <div class="food-log-main">
+            <span class="food-log-name">${food ? food.name : 'מוצר לא ידוע'}</span>
+            <span class="food-log-grams">${entry.grams}g</span>
+            <button class="food-log-del" onclick="deleteLogEntry('${entry.id}')">✕</button>
+          </div>
+          <div class="food-log-macros">${c.cal} קל · ${c.protein}g חלבון · ${c.carbs}g פחמ' · ${c.fat}g שומן</div>
+        </div>`;
+      }).join('')
+    : `<div class="chart-empty">טרם הוזן מזון להיום</div>`;
+
+  const noProducts = state.foods.length === 0;
+
+  const addForm = state.showAddFood
+    ? `<div class="add-food-form">
+        <div class="form-title" style="font-size:15px;margin-bottom:12px">הוסף אכילה</div>
+        ${noProducts ? `<div class="notice">💡 הוסף מוצרים ברשימת המוצרים תחילה</div>` : ''}
+        <div class="form-field">
+          <label class="form-lbl">בחר מוצר</label>
+          <select class="form-inp" id="food-select" style="font-size:14px;text-align:right">
+            <option value="">-- בחר מוצר --</option>
+            ${state.foods.map(f => `<option value="${f.id}">${f.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-field" style="margin-top:10px">
+          <label class="form-lbl">כמות (גרם)</label>
+          <input class="form-inp" type="number" inputmode="decimal" id="food-grams" placeholder="100">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="form-submit" style="flex:1" onclick="addFoodEntry()">הוסף</button>
+          <button class="ghost-btn" onclick="state.showAddFood=false;render('nutrition')">ביטול</button>
+        </div>
+      </div>`
+    : `<button class="big-btn big-btn-green" onclick="state.showAddFood=true;render('nutrition')" style="margin-top:4px">+ הוסף אכילה</button>`;
+
+  return `<div class="view">
+    ${nutritionSubNav()}
+    <div class="sec-label">סיכום יומי</div>
+    ${macros}
+    <div class="sec-label" style="margin-top:14px">מה אכלתי היום</div>
+    <div class="food-log-list">${logItems}</div>
+    ${addForm}
+    <button class="ghost-btn" style="width:100%;margin-top:10px;font-size:12px"
+      onclick="state.nutritionTargets=null;saveNutrition();render('nutrition')">⚙ שנה יעדים יומיים</button>
+  </div>`;
+}
+
+// ── Products list view ────────────────────────
+function viewNutritionProducts() {
+  const productItems = state.foods.map(f => `
+    <div class="food-product-item">
+      <div class="food-log-main">
+        <span class="food-log-name">${f.name}</span>
+        <button class="food-log-del" onclick="deleteFood('${f.id}')">✕</button>
+      </div>
+      <div class="food-log-macros">ל-100g: ${f.per100.cal} קל · ${f.per100.protein}g חלבון · ${f.per100.carbs}g פחמ' · ${f.per100.fat}g שומן</div>
+    </div>`).join('');
+
+  const addProductForm = state.showAddProduct
+    ? `<div class="add-food-form">
+        <div class="form-title" style="font-size:15px;margin-bottom:12px">מוצר חדש</div>
+        <div class="form-field">
+          <label class="form-lbl">שם המוצר</label>
+          <input class="form-inp" type="text" id="prod-name" placeholder="חזה עוף" style="text-align:right">
+        </div>
+        <div class="form-grid" style="margin-top:10px">
+          <div class="form-field">
+            <label class="form-lbl">קלוריות (ל-100g)</label>
+            <input class="form-inp" type="number" inputmode="decimal" id="prod-cal" placeholder="165">
+          </div>
+          <div class="form-field">
+            <label class="form-lbl">חלבון (g)</label>
+            <input class="form-inp" type="number" inputmode="decimal" id="prod-protein" placeholder="31">
+          </div>
+          <div class="form-field">
+            <label class="form-lbl">פחמימות (g)</label>
+            <input class="form-inp" type="number" inputmode="decimal" id="prod-carbs" placeholder="0">
+          </div>
+          <div class="form-field">
+            <label class="form-lbl">שומן (g)</label>
+            <input class="form-inp" type="number" inputmode="decimal" id="prod-fat" placeholder="3.6">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="form-submit" style="flex:1" onclick="addFoodProduct()">שמור מוצר</button>
+          <button class="ghost-btn" onclick="state.showAddProduct=false;render('nutrition')">ביטול</button>
+        </div>
+      </div>`
+    : `<button class="big-btn big-btn-gold" onclick="state.showAddProduct=true;render('nutrition')" style="margin-top:4px">+ הוסף מוצר</button>`;
+
+  return `<div class="view">
+    ${nutritionSubNav()}
+    <div class="sec-label">${state.foods.length} מוצרים ברשימה</div>
+    ${state.foods.length
+      ? `<div class="food-products-list">${productItems}</div>`
+      : `<div class="chart-empty" style="margin-bottom:12px">אין מוצרים עדיין — הוסף מוצרים ותוכל לעקוב אחר התזונה</div>`}
+    ${addProductForm}
+  </div>`;
+}
+
+// ── Bind & Actions ────────────────────────────
+function bindNutrition() {
+  const btn = document.getElementById('save-targets-btn');
+  if (btn) btn.addEventListener('click', saveNutritionTargets);
+}
+
+function saveNutritionTargets() {
+  const cal     = parseFloat(document.getElementById('target-cal')?.value)     || 0;
+  const protein = parseFloat(document.getElementById('target-protein')?.value) || 0;
+  const carbs   = parseFloat(document.getElementById('target-carbs')?.value)   || 0;
+  const fat     = parseFloat(document.getElementById('target-fat')?.value)     || 0;
+  if (!cal && !protein && !carbs && !fat) { toast('הזן לפחות יעד אחד'); return; }
+  state.nutritionTargets = { cal, protein, carbs, fat };
+  saveNutrition();
+  render('nutrition');
+  toast('יעדים נשמרו! 🥗');
+}
+
+function addFoodProduct() {
+  const name    = document.getElementById('prod-name')?.value.trim();
+  const cal     = parseFloat(document.getElementById('prod-cal')?.value)     || 0;
+  const protein = parseFloat(document.getElementById('prod-protein')?.value) || 0;
+  const carbs   = parseFloat(document.getElementById('prod-carbs')?.value)   || 0;
+  const fat     = parseFloat(document.getElementById('prod-fat')?.value)     || 0;
+  if (!name) { toast('הזן שם מוצר'); return; }
+  state.foods.push({ id: Date.now(), name, per100: { cal, protein, carbs, fat } });
+  state.showAddProduct = false;
+  saveNutrition();
+  render('nutrition');
+  toast(`${name} נוסף!`);
+}
+
+function deleteFood(id) {
+  if (!confirm('למחוק מוצר זה?')) return;
+  state.foods = state.foods.filter(f => String(f.id) !== String(id));
+  saveNutrition();
+  render('nutrition');
+}
+
+function addFoodEntry() {
+  const foodId = parseInt(document.getElementById('food-select')?.value);
+  const grams  = parseFloat(document.getElementById('food-grams')?.value) || 0;
+  if (!foodId) { toast('בחר מוצר'); return; }
+  if (!grams)  { toast('הזן כמות בגרמים'); return; }
+  state.foodLog.push({ id: Date.now(), date: todayStr(), foodId, grams });
+  state.showAddFood = false;
+  saveNutrition();
+  render('nutrition');
+}
+
+function deleteLogEntry(id) {
+  state.foodLog = state.foodLog.filter(e => String(e.id) !== String(id));
+  saveNutrition();
+  render('nutrition');
 }
 
 // ── Init ─────────────────────────────────────

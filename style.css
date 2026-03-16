@@ -1223,6 +1223,217 @@ html, body {
 
 .home-link-btn:active { background: var(--card2); }
 
+/* ── Exercise hold-timer ───────────────────── */
+.ex-timer-box {
+  background: linear-gradient(135deg, rgba(12,166,120,0.06), rgba(56,217,169,0.04));
+  border: 1.5px solid rgba(12,166,120,0.25);
+  border-radius: var(--r);
+  padding: 14px 16px;
+  text-align: center;
+}
+
+.ex-timer-label {
+  font-size: 10px;
+  color: var(--t-sub);
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.ex-timer-val {
+  font-family: var(--f-head);
+  font-size: 48px;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--p), var(--p-lt));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  transition: all 0.3s;
+}
+
+.ex-timer-val.ex-timer-urgent {
+  background: linear-gradient(135deg, var(--a), #ff7a55);
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: urgent-pulse 0.5s ease-in-out infinite;
+}
+
+@keyframes urgent-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+/* ── History tab toggle ────────────────────── */
+.hist-tab-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.hist-tab-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  color: var(--t-sub);
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.hist-tab-btn.active {
+  background: linear-gradient(135deg, var(--p-dk), var(--p));
+  border-color: transparent;
+  color: #0d1117;
+  box-shadow: 0 3px 14px rgba(56,217,169,0.25);
+}
+
+/* ══════════════════════════════════════════════
+   NUTRITION VIEW
+   ══════════════════════════════════════════════ */
+
+/* Macro progress bars */
+.nutrition-macros {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.macro-bar-wrap { display: flex; flex-direction: column; gap: 5px; }
+
+.macro-bar-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.macro-bar-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t);
+}
+
+.macro-bar-nums {
+  font-size: 12px;
+  color: var(--t-sub);
+  font-weight: 500;
+  direction: ltr;
+}
+
+.macro-bar-nums.macro-over { color: var(--red); font-weight: 700; }
+
+.macro-bar-track {
+  height: 8px;
+  background: var(--card2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.macro-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s cubic-bezier(.34,1.56,.64,1);
+  min-width: 4px;
+}
+
+.macro-bar-rem {
+  font-size: 10px;
+  color: var(--t-dim);
+  font-weight: 500;
+  direction: ltr;
+  text-align: left;
+}
+
+/* Food log */
+.food-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.food-log-item, .food-product-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.food-log-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.food-log-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t);
+}
+
+.food-log-grams {
+  font-size: 12px;
+  color: var(--p);
+  font-weight: 700;
+  background: var(--p-dim);
+  border-radius: var(--r-xs);
+  padding: 2px 8px;
+  direction: ltr;
+}
+
+.food-log-del {
+  background: none;
+  border: none;
+  color: var(--t-dim);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.food-log-del:active { color: var(--red); }
+
+.food-log-macros {
+  font-size: 11px;
+  color: var(--t-sub);
+  font-weight: 400;
+  direction: ltr;
+  text-align: left;
+}
+
+.food-products-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+/* Add food / add product form card */
+.add-food-form {
+  background: var(--card);
+  border: 1px solid var(--border-v);
+  border-radius: var(--r);
+  padding: 16px;
+  margin-top: 4px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
 /* ── Helpers ───────────────────────────────── */
 .hidden { display: none !important; }
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
