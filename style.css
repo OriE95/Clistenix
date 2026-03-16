@@ -1409,6 +1409,43 @@ html, body {
 
 .food-log-del:active { color: var(--red); }
 
+/* Unit toggle row in product form */
+.unit-toggle-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.unit-toggle-btn {
+  flex: 1;
+  padding: 7px 0;
+  border-radius: var(--r-xs);
+  border: 1.5px solid var(--border-v);
+  background: var(--surface);
+  color: var(--t-dim);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.unit-toggle-btn.active {
+  background: var(--p-dim);
+  color: var(--p);
+  border-color: var(--p);
+}
+
+/* Small badge showing unit in product list */
+.food-log-unit-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gold);
+  background: rgba(200,160,0,0.12);
+  border-radius: var(--r-xs);
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
 .food-log-macros {
   font-size: 11px;
   color: var(--t-sub);
@@ -1422,6 +1459,50 @@ html, body {
   flex-direction: column;
   gap: 6px;
   margin-bottom: 10px;
+}
+
+/* Food search dropdown */
+.food-search-results {
+  display: none;
+  border: 1.5px solid var(--border-v);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+}
+
+.food-search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+
+.food-search-item:last-child { border-bottom: none; }
+.food-search-item:active { background: var(--p-dim); }
+
+.food-search-item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--t);
+}
+
+.food-search-item-cal {
+  font-size: 11px;
+  color: var(--t-dim);
+  direction: ltr;
+}
+
+.food-search-empty {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--t-dim);
+  text-align: center;
 }
 
 /* Add food / add product form card */
