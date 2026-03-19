@@ -141,6 +141,7 @@ const state = {
   nutritionSubTab:  'today',
   showAddFood:      false,
   showAddProduct:   false,
+  addFoodMode:      'product', // 'product' | 'manual'
 };
 
 // ── Storage ─────────────────────────────────
@@ -1502,6 +1503,7 @@ function productPer100Label(unit) {
 }
 
 function computeEntry(entry) {
+  if (entry.macros) return entry.macros; // manual quick entry
   const food = state.foods.find(f => f.id === entry.foodId);
   if (!food) return { cal: 0, protein: 0, carbs: 0, fat: 0 };
   const k = (food.unit === 'unit') ? entry.grams : entry.grams / 100;
@@ -1606,9 +1608,39 @@ function viewNutritionToday() {
 
   const noProducts = state.foods.length === 0;
 
+  const isManual = state.addFoodMode === 'manual';
   const addForm = state.showAddFood
     ? `<div class="add-food-form">
-        <div class="form-title" style="font-size:15px;margin-bottom:12px">הוסף אכילה</div>
+        <div class="form-title" style="font-size:15px;margin-bottom:10px">הוסף אכילה</div>
+        <div class="unit-toggle-row" style="margin-bottom:12px">
+          <button type="button" class="unit-toggle-btn${!isManual ? ' active' : ''}"
+            onclick="state.addFoodMode='product';render('nutrition')">מרשימת מוצרים</button>
+          <button type="button" class="unit-toggle-btn${isManual ? ' active' : ''}"
+            onclick="state.addFoodMode='manual';render('nutrition')">הזנה ידנית</button>
+        </div>
+        ${isManual ? `
+        <div class="form-field">
+          <label class="form-lbl">תיאור</label>
+          <input class="form-inp" type="text" id="manual-name" placeholder="לדוגמה: עוגת שוקולד" style="text-align:right">
+        </div>
+        <div class="form-grid" style="margin-top:10px">
+          <div class="form-field">
+            <label class="form-lbl">קלוריות</label>
+            <input class="form-inp" type="number" inputmode="decimal" id="manual-cal" placeholder="200">
+          </div>
+          <div class="form-field">
+            <label class="form-lbl">חלבון (g)</label>
+            <input class="form-inp" type="number" inputmode="decimal" id="manual-protein" placeholder="0">
+          </div>
+          <div class="form-field">
+            <label class="form-lbl">פחמימות (g)</label>
+            <input class="form-inp" type="number" inputmode="decimal" id="manual-carbs" placeholder="0">
+          </div>
+          <div class="form-field">
+            <label class="form-lbl">שומן (g)</label>
+            <input class="form-inp" type="number" inputmode="decimal" id="manual-fat" placeholder="0">
+          </div>
+        </div>` : `
         ${noProducts ? `<div class="notice">💡 הוסף מוצרים ברשימת המוצרים תחילה</div>` : ''}
         <div class="form-field">
           <label class="form-lbl">חיפוש מוצר</label>
@@ -1623,7 +1655,7 @@ function viewNutritionToday() {
         <div class="form-field" style="margin-top:10px">
           <label class="form-lbl" id="food-grams-label">כמות (גרמים)</label>
           <input class="form-inp" type="number" inputmode="decimal" id="food-grams" placeholder="100">
-        </div>
+        </div>`}
         <div style="display:flex;gap:8px;margin-top:12px">
           <button class="form-submit" style="flex:1" onclick="addFoodEntry()">הוסף</button>
           <button class="ghost-btn" onclick="state.showAddFood=false;render('nutrition')">ביטול</button>
@@ -1633,13 +1665,21 @@ function viewNutritionToday() {
 
   const logItems = entries.length
     ? [...entries].reverse().map(entry => {
-        const food = state.foods.find(f => f.id === entry.foodId);
         const c = computeEntry(entry);
-        const qUnit = food ? (food.unit === 'unit' ? ' יח׳' : food.unit === 'ml' ? 'מ"ל' : 'g') : 'g';
+        let displayName, displayQty;
+        if (entry.macros) {
+          displayName = entry.name || 'הזנה ידנית';
+          displayQty  = '';
+        } else {
+          const food = state.foods.find(f => f.id === entry.foodId);
+          const qUnit = food ? (food.unit === 'unit' ? ' יח׳' : food.unit === 'ml' ? 'מ"ל' : 'g') : 'g';
+          displayName = food ? food.name : 'מוצר לא ידוע';
+          displayQty  = `<span class="food-log-grams">${entry.grams}${qUnit}</span>`;
+        }
         return `<div class="food-log-item">
           <div class="food-log-main">
-            <span class="food-log-name">${food ? food.name : 'מוצר לא ידוע'}</span>
-            <span class="food-log-grams">${entry.grams}${qUnit}</span>
+            <span class="food-log-name">${displayName}</span>
+            ${displayQty}
             <button class="food-log-del" onclick="deleteLogEntry('${entry.id}')">✕</button>
           </div>
           <div class="food-log-macros">${c.cal} קל · ${c.protein}g חלבון · ${c.carbs}g פחמ' · ${c.fat}g שומן</div>
@@ -1717,11 +1757,11 @@ function viewNutritionProducts() {
 
   return `<div class="view">
     ${nutritionSubNav()}
-    <div class="sec-label">${state.foods.length} מוצרים ברשימה</div>
-    ${state.foods.length
-      ? `<div class="food-products-list">${productItems}</div>`
-      : `<div class="chart-empty" style="margin-bottom:12px">אין מוצרים עדיין — הוסף מוצרים ותוכל לעקוב אחר התזונה</div>`}
     ${addProductForm}
+    ${state.foods.length
+      ? `<div class="sec-label" style="margin-top:14px">${state.foods.length} מוצרים ברשימה</div>
+         <div class="food-products-list">${productItems}</div>`
+      : `<div class="chart-empty" style="margin-top:10px">אין מוצרים עדיין — הוסף מוצרים ותוכל לעקוב אחר התזונה</div>`}
   </div>`;
 }
 
@@ -1821,16 +1861,26 @@ function selectFood(id, name, unit) {
 }
 
 function addFoodEntry() {
-  const foodId = parseInt(document.getElementById('food-select')?.value);
-  const grams  = parseFloat(document.getElementById('food-grams')?.value) || 0;
-  if (!foodId) { toast('בחר מוצר מהרשימה'); return; }
-  if (!grams)  {
-    const food = state.foods.find(f => f.id === foodId);
-    const u = food?.unit;
-    toast(u === 'unit' ? 'הזן כמות יחידות' : u === 'ml' ? 'הזן כמות במ"ל' : 'הזן כמות בגרמים');
-    return;
+  if (state.addFoodMode === 'manual') {
+    const name    = document.getElementById('manual-name')?.value.trim() || 'הזנה ידנית';
+    const cal     = parseFloat(document.getElementById('manual-cal')?.value)     || 0;
+    const protein = parseFloat(document.getElementById('manual-protein')?.value) || 0;
+    const carbs   = parseFloat(document.getElementById('manual-carbs')?.value)   || 0;
+    const fat     = parseFloat(document.getElementById('manual-fat')?.value)     || 0;
+    if (!cal && !protein && !carbs && !fat) { toast('הזן לפחות ערך תזונתי אחד'); return; }
+    state.foodLog.push({ id: Date.now(), date: todayStr(), name, macros: { cal, protein, carbs, fat } });
+  } else {
+    const foodId = parseInt(document.getElementById('food-select')?.value);
+    const grams  = parseFloat(document.getElementById('food-grams')?.value) || 0;
+    if (!foodId) { toast('בחר מוצר מהרשימה'); return; }
+    if (!grams)  {
+      const food = state.foods.find(f => f.id === foodId);
+      const u = food?.unit;
+      toast(u === 'unit' ? 'הזן כמות יחידות' : u === 'ml' ? 'הזן כמות במ"ל' : 'הזן כמות בגרמים');
+      return;
+    }
+    state.foodLog.push({ id: Date.now(), date: todayStr(), foodId, grams });
   }
-  state.foodLog.push({ id: Date.now(), date: todayStr(), foodId, grams });
   state.showAddFood = false;
   saveNutrition();
   render('nutrition');
