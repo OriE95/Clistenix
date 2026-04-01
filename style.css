@@ -450,6 +450,55 @@ html, body {
   color: var(--t-sub);
 }
 
+/* ── Superset styles ── */
+.superset-group {
+  border-color: var(--gold) !important;
+  border-width: 1.5px !important;
+}
+.superset-label {
+  padding: 5px 14px 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: rgba(212,180,84,0.08);
+  border-bottom: 1px solid rgba(212,180,84,0.18);
+}
+.superset-ex-row {
+  padding: 10px 16px 8px;
+}
+.superset-plus {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1;
+  margin: 0;
+  background: rgba(212,180,84,0.06);
+  padding: 2px 0;
+}
+/* Active workout superset badge */
+.superset-active-badge {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  color: var(--gold);
+  background: rgba(212,180,84,0.1);
+  border: 1px solid rgba(212,180,84,0.25);
+  border-radius: var(--r-xs);
+  padding: 5px 14px;
+  margin: 0 0 8px;
+}
+.superset-next-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--t-sub);
+  margin: 0 0 10px;
+  padding: 0 16px;
+}
+
 /* Exercise card */
 .ex-card {
   background: var(--card);
@@ -1143,6 +1192,304 @@ html, body {
   margin-top: 8px;
 }
 
+/* ── Plan Builder ────────────────────────────── */
+
+.plan-tabs {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: 14px;
+  background: var(--card2);
+  border-radius: var(--r-sm);
+  padding: 4px;
+}
+
+.plan-tab {
+  flex: 1;
+  padding: 8px 4px;
+  border: none;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--t-sub);
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.plan-tab.active {
+  background: var(--surface);
+  color: var(--p);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+}
+
+.plan-ex-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+  min-height: 48px;
+}
+
+.plan-ex-empty {
+  width: 100%;
+  text-align: center;
+  color: var(--t-dim);
+  font-size: 13px;
+  padding: 24px 0;
+  line-height: 1.7;
+}
+
+.plan-ex-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  text-align: right;
+  direction: rtl;
+}
+
+.plan-ex-item.has-superset {
+  border-color: var(--border-v);
+  background: var(--p-dim);
+}
+
+.plan-ex-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.plan-ex-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-ex-meta {
+  font-size: 11px;
+  color: var(--t-sub);
+  margin-top: 2px;
+}
+
+.plan-ex-ss-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--p);
+  background: var(--p-dim);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-top: 3px;
+}
+
+.plan-ex-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.plan-ex-move-btn,
+.plan-ex-edit-btn,
+.plan-ex-del-btn {
+  border: none;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.plan-ex-move-btn {
+  background: var(--card2);
+  color: var(--t-sub);
+}
+.plan-ex-move-btn:active { background: var(--border); }
+
+.plan-ex-edit-btn {
+  background: var(--p-dim);
+  color: var(--p);
+}
+.plan-ex-edit-btn:active { background: rgba(12,166,120,0.22); }
+
+.plan-ex-del-btn {
+  background: var(--a-dim);
+  color: var(--a);
+}
+.plan-ex-del-btn:active { background: rgba(232,84,42,0.22); }
+
+.plan-ex-move-placeholder {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+}
+
+.plan-add-btn {
+  width: 100%;
+  padding: 11px;
+  border: 1.5px dashed var(--border-v);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--p);
+  font-family: var(--f-body);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.plan-add-btn:active { background: var(--p-dim); }
+
+.plan-pdf-ref-btn {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--t-sub);
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.plan-pdf-ref-btn:active { background: var(--card2); }
+
+/* ── Exercise Form Modal ─────────────────────── */
+
+.ex-form-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 900;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.ex-form-modal {
+  background: var(--surface);
+  border-radius: var(--r) var(--r) 0 0;
+  padding: 20px 20px 32px;
+  width: 100%;
+  max-width: 480px;
+  direction: rtl;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.ex-form-title {
+  font-family: var(--f-head);
+  font-size: 20px;
+  color: var(--t);
+  margin-bottom: 18px;
+  text-align: center;
+}
+
+.ex-form-field {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 14px;
+}
+
+.ex-form-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.ex-form-row .ex-form-field {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.ex-form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-sub);
+  margin-bottom: 5px;
+}
+
+.ex-form-input,
+.ex-form-select {
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--card2);
+  color: var(--t);
+  font-family: var(--f-body);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+
+.ex-form-input:focus,
+.ex-form-select:focus {
+  border-color: var(--p);
+  background: var(--surface);
+}
+
+.ex-form-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--t);
+  cursor: pointer;
+}
+
+.ex-form-checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--p);
+  cursor: pointer;
+}
+
+.ex-form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.ex-form-cancel,
+.ex-form-save {
+  flex: 1;
+  padding: 13px;
+  border: none;
+  border-radius: var(--r-sm);
+  font-family: var(--f-body);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.ex-form-cancel {
+  background: var(--card2);
+  color: var(--t-sub);
+}
+
+.ex-form-save {
+  background: var(--p);
+  color: #fff;
+}
+
+.ex-form-cancel:active,
+.ex-form-save:active { opacity: 0.8; }
+
 /* Ghost button for setup */
 .big-btn-ghost {
   background: transparent;
@@ -1451,6 +1798,7 @@ html, body {
   color: var(--t-sub);
   font-weight: 400;
   direction: ltr;
+  unicode-bidi: bidi-override;
   text-align: left;
 }
 
@@ -1502,6 +1850,139 @@ html, body {
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   padding: 8px 12px;
+}
+
+/* Live total card */
+.recipe-total-card {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  background: var(--p-dim);
+  border: 1.5px solid var(--p);
+  border-radius: var(--r-sm);
+  padding: 10px 16px;
+  margin-bottom: 14px;
+  direction: ltr;
+}
+
+.recipe-total-num {
+  font-family: var(--f-head);
+  font-size: 22px;
+  color: var(--p);
+  line-height: 1;
+}
+
+.recipe-total-unit {
+  font-size: 12px;
+  color: var(--t-sub);
+  font-weight: 600;
+}
+
+.recipe-total-dot {
+  font-size: 16px;
+  color: var(--t-dim);
+  margin: 0 2px;
+}
+
+.recipe-total-ratio {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+/* Slider row */
+.recipe-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 2px;
+  direction: ltr;
+}
+
+.recipe-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--card2);
+  outline: none;
+  cursor: pointer;
+  accent-color: var(--p);
+}
+
+.recipe-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--p);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(12,166,120,0.35);
+}
+
+.recipe-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--p);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 1px 4px rgba(12,166,120,0.35);
+}
+
+/* Qty stepper row */
+.recipe-qty-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 2px;
+  direction: ltr;
+}
+
+.recipe-qty-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-v);
+  background: var(--p-dim);
+  color: var(--p);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+.recipe-qty-btn:active { background: rgba(12,166,120,0.25); }
+
+.recipe-qty-input {
+  width: 60px;
+  padding: 5px 6px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--card2);
+  color: var(--t);
+  font-family: var(--f-body);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.recipe-qty-input::-webkit-outer-spin-button,
+.recipe-qty-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.recipe-qty-input:focus { border-color: var(--p); background: var(--surface); }
+
+.recipe-qty-unit {
+  font-size: 12px;
+  color: var(--t-sub);
+  font-weight: 600;
 }
 
 .recipe-portions-row {

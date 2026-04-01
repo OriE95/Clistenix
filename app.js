@@ -430,6 +430,47 @@ function viewWorkout() {
   return viewWorkoutSelector();
 }
 
+// ── Render exercise preview cards (with superset grouping) ──
+function renderExPreview(exercises) {
+  const parts = [];
+  const done  = new Set();
+  for (let i = 0; i < exercises.length; i++) {
+    if (done.has(i)) continue;
+    const ex = exercises[i];
+    if (!ex.supersetId) {
+      const vUrl = getExLink(ex.name);
+      parts.push(`<div class="ex-card" style="opacity:.75">
+        <div class="ex-head">
+          <div>
+            <div class="ex-name">${ex.name}${vUrl ? `<button class="ex-link-btn" onclick="openLink('${vUrl}')">▶</button>` : ''}</div>
+            <div class="ex-meta">${ex.sets} סטים × ${ex.target} ${ex.unit}</div>
+          </div>
+          <div class="ex-badge">${ex.sets}×</div>
+        </div>
+      </div>`);
+    } else {
+      const group = exercises.map((e, idx) => ({ e, idx }))
+        .filter(({ e, idx }) => e.supersetId === ex.supersetId && !done.has(idx));
+      group.forEach(({ idx }) => done.add(idx));
+      const inner = group.map(({ e: gEx }, gi) => {
+        const vUrl = getExLink(gEx.name);
+        return `${gi > 0 ? '<div class="superset-plus">+</div>' : ''}
+          <div class="superset-ex-row">
+            <div>
+              <div class="ex-name">${gEx.name}${vUrl ? `<button class="ex-link-btn" onclick="openLink('${vUrl}')">▶</button>` : ''}</div>
+              <div class="ex-meta">${gEx.sets} סטים × ${gEx.target} ${gEx.unit}</div>
+            </div>
+          </div>`;
+      }).join('');
+      parts.push(`<div class="ex-card superset-group" style="opacity:.75">
+        <div class="superset-label">סופרסט</div>
+        ${inner}
+      </div>`);
+    }
+  }
+  return parts.join('');
+}
+
 function viewWorkoutSelector() {
   const tdWkt = state.workouts.find(w => w.date === todayStr());
   const nt    = nextType();
@@ -450,18 +491,7 @@ function viewWorkoutSelector() {
     ✓ כבר אימנת היום — <strong>${tdWkt.type === 'legs' ? 'רגליים' : 'אימון ' + tdWkt.type}</strong>
   </div>` : '';
 
-  const preview = PLANS[state.selType].exercises.map(ex => {
-    const vUrl = getExLink(ex.name);
-    return `<div class="ex-card" style="opacity:.75">
-      <div class="ex-head">
-        <div>
-          <div class="ex-name">${ex.name}${vUrl ? `<button class="ex-link-btn" onclick="openLink('${vUrl}')">▶</button>` : ''}</div>
-          <div class="ex-meta">${ex.sets} סטים × ${ex.target} ${ex.unit}</div>
-        </div>
-        <div class="ex-badge">${ex.sets}×</div>
-      </div>
-    </div>`;
-  }).join('');
+  const preview = renderExPreview(PLANS[state.selType].exercises);
 
   return `<div class="view">
     <div class="sec-label">בחר אימון</div>
@@ -478,19 +508,7 @@ function selType(t) {
   state.selType = t;
   document.querySelectorAll('.type-btn').forEach((b, i) =>
     b.classList.toggle('active', ['A','B','legs'][i] === t));
-  document.getElementById('ex-preview').innerHTML =
-    PLANS[t].exercises.map(ex => {
-      const vUrl = getExLink(ex.name);
-      return `<div class="ex-card" style="opacity:.75">
-        <div class="ex-head">
-          <div>
-            <div class="ex-name">${ex.name}${vUrl ? `<button class="ex-link-btn" onclick="openLink('${vUrl}')">▶</button>` : ''}</div>
-            <div class="ex-meta">${ex.sets} סטים × ${ex.target} ${ex.unit}</div>
-          </div>
-          <div class="ex-badge">${ex.sets}×</div>
-        </div>
-      </div>`;
-    }).join('');
+  document.getElementById('ex-preview').innerHTML = renderExPreview(PLANS[t].exercises);
   document.querySelector('.big-btn-gold').textContent =
     `התחל ${t === 'legs' ? 'אימון רגליים' : 'אימון ' + t}`;
 }
@@ -501,12 +519,13 @@ function startWorkout() {
     type:                     state.selType,
     startTime:                Date.now(),
     exercises:                plan.exercises.map(ex => ({
-      name:   ex.name,
-      unit:   ex.unit,
-      type:   ex.type,
-      rest:   ex.restSec || ex.rest || 120,
-      target: ex.target,
-      sets:   Array.from({ length: ex.sets }, () => ({ value: '', done: false }))
+      name:       ex.name,
+      unit:       ex.unit,
+      type:       ex.type,
+      rest:       ex.restSec || ex.rest || 120,
+      target:     ex.target,
+      supersetId: ex.supersetId || null,
+      sets:       Array.from({ length: ex.sets }, () => ({ value: '', done: false }))
     })),
     exIdx:                    0,
     phase:                    'countdown',
@@ -578,8 +597,19 @@ function viewCurrentExercise() {
     ${armHTML}
   </div>`;
 
-  // ── Phase: rest between SETS ──
+  // ── Phase: rest between SETS (or between superset rounds) ──
   if (state.active.resting) {
+    let restLbl, restNextLbl;
+    if (ex.supersetId) {
+      const supersetExs = exs.filter(e => e.supersetId === ex.supersetId);
+      const roundsDone  = doneSets;
+      const roundsTotal = totalSets;
+      restLbl     = `מנוחה · סיימת סבב ${roundsDone} מתוך ${roundsTotal}`;
+      restNextLbl = `הכן עצמך לסבב ${roundsDone + 1}: ${supersetExs[0].name}`;
+    } else {
+      restLbl     = 'מנוחה';
+      restNextLbl = `הכן עצמך לסט ${doneSets + 1} מתוך ${totalSets}`;
+    }
     return `<div class="view exercise-view">
       ${navBar}
       <div class="ex-focused-card" style="opacity:.6">
@@ -587,11 +617,11 @@ function viewCurrentExercise() {
         <div class="ex-focused-meta">${totalSets} סטים × ${ex.target} ${ex.unit}</div>
       </div>
       <div class="rest-focused">
-        <div class="timer-lbl">מנוחה</div>
+        <div class="timer-lbl">${restLbl}</div>
         <div class="timer-val" id="timer-val">
           ${state.timer ? fmtSecs(state.timer.secs) : '00:00'}
         </div>
-        <div class="rest-next-lbl">הכן עצמך לסט ${doneSets + 1} מתוך ${totalSets}</div>
+        <div class="rest-next-lbl">${restNextLbl}</div>
         <div class="timer-btns">
           <button class="timer-btn" onclick="addTime(30)">+30 שניות</button>
           <button class="timer-btn skip" onclick="skipTimerToSet()">דלג ←</button>
@@ -658,8 +688,21 @@ function viewCurrentExercise() {
     </div>`;
   }
 
+  // ── Superset context badge ──
+  let supersetBadgeHTML = '';
+  if (ex.supersetId) {
+    const supersetExs   = exs.filter(e => e.supersetId === ex.supersetId);
+    const posInGroup    = supersetExs.indexOf(ex);
+    const isLastInGroup = posInGroup === supersetExs.length - 1;
+    const nextHint = !isLastInGroup
+      ? `<div class="superset-next-hint">אחרי זה מיד ← ${supersetExs[posInGroup + 1].name}</div>`
+      : `<div class="superset-next-hint">אחרי זה: מנוחה</div>`;
+    supersetBadgeHTML = `<div class="superset-active-badge">סופרסט · ${posInGroup + 1}/${supersetExs.length}</div>${nextHint}`;
+  }
+
   return `<div class="view exercise-view">
     ${navBar}
+    ${supersetBadgeHTML}
     <div class="ex-focused-card">
       <div class="ex-focused-name">${ex.name}${vUrl ? `<button class="ex-link-btn" onclick="openLink('${vUrl}')">▶</button>` : ''}</div>
       <div class="ex-focused-meta">${totalSets} סטים × ${ex.target} ${ex.unit}</div>
@@ -761,9 +804,44 @@ function completeCurrentSet() {
   // Stop exercise hold-timer
   stopExerciseTimer();
 
+  const exs      = state.active.exercises;
   const newDone  = ex.sets.filter(s => s.done).length;
   const isLastSet = newDone === ex.sets.length;
-  const isLastEx  = state.active.exIdx === state.active.exercises.length - 1;
+  const isLastEx  = state.active.exIdx === exs.length - 1;
+
+  // ── Superset handling ──────────────────────────────────────────
+  if (ex.supersetId) {
+    const supersetExs   = exs.filter(e => e.supersetId === ex.supersetId);
+    const posInGroup    = supersetExs.indexOf(ex);
+    const isLastInGroup = posInGroup === supersetExs.length - 1;
+
+    if (!isLastInGroup) {
+      // Jump directly to next exercise in superset — no rest
+      const nextInGroup = supersetExs[posInGroup + 1];
+      state.active.exIdx = exs.indexOf(nextInGroup);
+      render('workout');
+      return;
+    }
+
+    if (!isLastSet) {
+      // Completed one full round of the superset — rest before next round
+      state.active.resting = true;
+      state.active.restingBetweenExercises = false;
+      render('workout');
+      const firstInGroup = supersetExs[0];
+      startTimer(ex.rest, () => {
+        stopTimer();
+        state.active.resting = false;
+        state.active.exIdx = exs.indexOf(firstInGroup);
+        render('workout');
+      });
+      if (navigator.vibrate) navigator.vibrate([100]);
+      return;
+    }
+
+    // isLastInGroup && isLastSet → fall through to normal last-set behavior
+  }
+  // ──────────────────────────────────────────────────────────────
 
   if (isLastSet) {
     state.active.lastSetAnimation = true;
@@ -1362,33 +1440,47 @@ function toast(msg) {
 
 function showSetup() {
   const hasExisting = hasSavedPlan();
+  // Initialize plan builder state fresh on each entry
+  window._pendingPlan = hasExisting
+    ? JSON.parse(JSON.stringify(PLANS))
+    : JSON.parse(JSON.stringify(DEFAULT_PLANS));
+  window._activePlanTab = 'A';
   document.getElementById('bottom-nav').style.display = 'none';
   document.getElementById('main-content').innerHTML = viewSetup(hasExisting);
 }
 
 function viewSetup(showBack = false) {
+  const tab = window._activePlanTab || 'A';
   const backBtn = showBack
-    ? `<button class="setup-back-btn" onclick="finishSetup()">← חזור</button>`
+    ? `<button class="setup-back-btn" onclick="cancelSetup()">← חזור</button>`
     : '';
   return `<div class="view setup-view">
     ${backBtn}
     <div class="setup-logo">⚔</div>
-    <div class="setup-title">${showBack ? 'עדכן תוכנית' : 'ברוך הבא!'}</div>
-    <div class="setup-sub">העלה את קובץ ה-PDF של תוכנית האימון שלך<br>והאפליקציה תבנה את עצמה אוטומטית</div>
+    <div class="setup-title">${showBack ? 'ערוך תוכנית' : 'ברוך הבא!'}</div>
 
-    <label class="pdf-upload-box" id="pdf-upload-box">
-      <input type="file" accept=".pdf" id="pdf-file-input" style="display:none" onchange="handlePDFUpload(this)">
-      <span class="upload-icon">📄</span>
-      <span class="upload-title">בחר קובץ PDF</span>
-      <span class="upload-hint">לחץ כאן להעלאה</span>
-    </label>
-
-    <div id="pdf-status" class="pdf-status hidden"></div>
-    <div id="pdf-preview" class="pdf-preview hidden"></div>
-
-    <div class="setup-divider">
-      <span>או</span>
+    <div class="plan-tabs">
+      <button class="plan-tab${tab === 'A'    ? ' active' : ''}" onclick="switchPlanTab('A')">אימון A</button>
+      <button class="plan-tab${tab === 'B'    ? ' active' : ''}" onclick="switchPlanTab('B')">אימון B</button>
+      <button class="plan-tab${tab === 'legs' ? ' active' : ''}" onclick="switchPlanTab('legs')">רגליים</button>
     </div>
+
+    <div class="plan-ex-list" id="plan-ex-list">
+      ${renderPlanExerciseList(tab)}
+    </div>
+
+    <button class="plan-add-btn" onclick="showExerciseForm('${tab}', -1)">+ הוסף תרגיל</button>
+
+    <button class="big-btn" style="margin-top:20px" onclick="savePlanAndFinish()">שמור תוכנית</button>
+
+    <div class="setup-divider" style="margin-top:14px"><span>כלים נוספים</span></div>
+
+    <button class="plan-pdf-ref-btn" onclick="document.getElementById('pdf-ref-input').click()">
+      📄 פתח PDF לעיון
+    </button>
+    <input type="file" accept=".pdf" id="pdf-ref-input" style="display:none" onchange="openPDFReference(this)">
+
+    <div class="setup-divider"><span>או</span></div>
 
     <button class="big-btn big-btn-ghost" onclick="useDefaultPlan()">
       השתמש בתוכנית ברירת המחדל
@@ -1397,62 +1489,198 @@ function viewSetup(showBack = false) {
   </div>`;
 }
 
-async function handlePDFUpload(input) {
+// ── Plan Builder Helpers ──────────────────────
+
+function switchPlanTab(type) {
+  window._activePlanTab = type;
+  document.getElementById('main-content').innerHTML = viewSetup(hasSavedPlan());
+}
+
+function cancelSetup() {
+  delete window._pendingPlan;
+  delete window._activePlanTab;
+  document.getElementById('bottom-nav').style.display = '';
+  render('home');
+}
+
+function savePlanAndFinish() {
+  if (!window._pendingPlan) return;
+  savePlan(window._pendingPlan);
+  delete window._pendingPlan;
+  delete window._activePlanTab;
+  finishSetup();
+}
+
+function openPDFReference(input) {
   const file = input.files[0];
   if (!file) return;
+  const url = URL.createObjectURL(file);
+  window.open(url, '_blank', 'noopener');
+  input.value = '';
+}
 
-  const box    = document.getElementById('pdf-upload-box');
-  const status = document.getElementById('pdf-status');
-  const preview = document.getElementById('pdf-preview');
+function _restDisplay(ex) {
+  if (ex.rest) return ex.rest;
+  const map = { 60: '1 דקה', 90: '1.5 דקות', 120: '2 דקות', 180: '3 דקות' };
+  return map[ex.restSec] || (ex.restSec ? ex.restSec + ' שנ׳' : '2 דקות');
+}
 
-  box.classList.add('loading');
-  status.className = 'pdf-status';
-  status.textContent = '⏳ מחלץ נתונים מה-PDF...';
-  preview.className = 'pdf-preview hidden';
-
-  try {
-    const plan = await parsePDFWorkoutPlan(file);
-    box.classList.remove('loading');
-    box.classList.add('success');
-    status.textContent = '✓ הקובץ נקרא בהצלחה!';
-
-    // Show preview
-    const types = Object.keys(plan).filter(k => k !== 'programName' && k !== 'source' && k !== 'links');
-    const previewHTML = types.map(t => `
-      <div class="preview-workout">
-        <div class="preview-wname">${plan[t].name}</div>
-        ${plan[t].exercises.map(ex => `
-          <div class="preview-ex">
-            <span class="preview-ex-name">${ex.name}</span>
-            <span class="preview-ex-meta">${ex.sets} × ${ex.target} ${ex.unit}</span>
-          </div>
-        `).join('')}
-      </div>
-    `).join('');
-
-    preview.innerHTML = `
-      <div class="preview-title">📋 ${plan.programName || 'תוכנית האימון שלך'}</div>
-      ${previewHTML}
-      <button class="big-btn big-btn-green" style="margin-top:16px" onclick="confirmPlan()">
-        אשר ושמור תוכנית ←
-      </button>
-    `;
-    preview.className = 'pdf-preview';
-
-    // Store temporarily for confirmation
-    window._pendingPlan = plan;
-
-  } catch (err) {
-    box.classList.remove('loading');
-    box.classList.add('error');
-    status.className = 'pdf-status error';
-    status.textContent = `⚠ ${err.message || 'שגיאה בקריאת הקובץ'}`;
-    preview.innerHTML = `
-      <div style="font-size:13px;color:var(--t-sub);text-align:center;padding:12px 0">
-        אפשר לנסות שוב או לבחור בתוכנית ברירת המחדל
-      </div>`;
-    preview.className = 'pdf-preview';
+function renderPlanExerciseList(type) {
+  const exercises = (window._pendingPlan[type] || {}).exercises || [];
+  if (!exercises.length) {
+    return `<div class="plan-ex-empty">אין תרגילים עדיין.<br>לחץ "+ הוסף תרגיל" להתחיל</div>`;
   }
+  return exercises.map((ex, i) => `
+    <div class="plan-ex-item${ex.supersetId ? ' has-superset' : ''}">
+      <div class="plan-ex-info">
+        <div class="plan-ex-name">${ex.name}</div>
+        <div class="plan-ex-meta">${ex.sets} × ${ex.target} ${ex.unit} | מנוחה: ${_restDisplay(ex)}</div>
+        ${ex.supersetId ? `<span class="plan-ex-ss-badge">סופרסט</span>` : ''}
+      </div>
+      <div class="plan-ex-actions">
+        ${i > 0
+          ? `<button class="plan-ex-move-btn" onclick="movePlanExercise('${type}',${i},-1)">↑</button>`
+          : `<span class="plan-ex-move-placeholder"></span>`}
+        ${i < exercises.length - 1
+          ? `<button class="plan-ex-move-btn" onclick="movePlanExercise('${type}',${i},1)">↓</button>`
+          : `<span class="plan-ex-move-placeholder"></span>`}
+        <button class="plan-ex-edit-btn" onclick="showExerciseForm('${type}',${i})">✏</button>
+        <button class="plan-ex-del-btn" onclick="deletePlanExercise('${type}',${i})">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function refreshPlanExerciseList() {
+  const list = document.getElementById('plan-ex-list');
+  if (list) list.innerHTML = renderPlanExerciseList(window._activePlanTab || 'A');
+}
+
+function movePlanExercise(type, idx, dir) {
+  const exercises = window._pendingPlan[type].exercises;
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= exercises.length) return;
+  [exercises[idx], exercises[newIdx]] = [exercises[newIdx], exercises[idx]];
+  refreshPlanExerciseList();
+}
+
+function deletePlanExercise(type, idx) {
+  window._pendingPlan[type].exercises.splice(idx, 1);
+  refreshPlanExerciseList();
+}
+
+function showExerciseForm(type, idx) {
+  const exercises = window._pendingPlan[type].exercises;
+  const ex = idx >= 0 ? exercises[idx] : null;
+  const restSec = ex ? ex.restSec : 120;
+
+  const restOptions = [
+    { sec: 60,  label: '1 דקה' },
+    { sec: 90,  label: '1.5 דקות' },
+    { sec: 120, label: '2 דקות' },
+    { sec: 180, label: '3 דקות' },
+  ].map(o => `<option value="${o.sec}"${restSec === o.sec ? ' selected' : ''}>${o.label}</option>`).join('');
+
+  const unitOptions = ['חזרות', 'שניות', 'לכל רגל']
+    .map(u => `<option value="${u}"${ex && ex.unit === u ? ' selected' : (!ex && u === 'חזרות' ? ' selected' : '')}>${u}</option>`)
+    .join('');
+
+  const hasSs = !!(ex && ex.supersetId);
+
+  const modal = document.createElement('div');
+  modal.id = 'ex-form-modal';
+  modal.className = 'ex-form-overlay';
+  modal.innerHTML = `
+    <div class="ex-form-modal">
+      <div class="ex-form-title">${idx >= 0 ? 'ערוך תרגיל' : 'תרגיל חדש'}</div>
+
+      <div class="ex-form-field">
+        <label class="ex-form-label">שם תרגיל</label>
+        <input class="ex-form-input" type="text" id="ef-name" value="${ex ? ex.name : ''}" placeholder="שם התרגיל" dir="rtl" autocomplete="off">
+      </div>
+
+      <div class="ex-form-row">
+        <div class="ex-form-field">
+          <label class="ex-form-label">סטים</label>
+          <input class="ex-form-input" type="number" id="ef-sets" value="${ex ? ex.sets : 3}" min="1" max="20">
+        </div>
+        <div class="ex-form-field">
+          <label class="ex-form-label">יעד</label>
+          <input class="ex-form-input" type="text" id="ef-target" value="${ex ? ex.target : '8–12'}" placeholder="8–12" dir="ltr">
+        </div>
+      </div>
+
+      <div class="ex-form-row">
+        <div class="ex-form-field">
+          <label class="ex-form-label">יחידה</label>
+          <select class="ex-form-select" id="ef-unit">${unitOptions}</select>
+        </div>
+        <div class="ex-form-field">
+          <label class="ex-form-label">מנוחה</label>
+          <select class="ex-form-select" id="ef-rest">${restOptions}</select>
+        </div>
+      </div>
+
+      <div class="ex-form-field">
+        <label class="ex-form-checkbox-label">
+          <input type="checkbox" id="ef-superset"${hasSs ? ' checked' : ''}>
+          <span>חלק מסופרסט</span>
+        </label>
+        <div id="ef-ss-id-wrap" style="display:${hasSs ? 'block' : 'none'};margin-top:6px">
+          <input class="ex-form-input" type="text" id="ef-ss-id" value="${ex && ex.supersetId ? ex.supersetId : ''}" placeholder="מזהה קבוצה (ייווצר אוטומטית)" dir="ltr">
+        </div>
+      </div>
+
+      <div class="ex-form-actions">
+        <button class="ex-form-cancel" onclick="closeExerciseForm()">ביטול</button>
+        <button class="ex-form-save" onclick="saveExerciseFromForm('${type}',${idx})">שמור</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  document.getElementById('ef-superset').addEventListener('change', function () {
+    document.getElementById('ef-ss-id-wrap').style.display = this.checked ? 'block' : 'none';
+  });
+
+  // Focus name field
+  setTimeout(() => { const el = document.getElementById('ef-name'); if (el) el.focus(); }, 50);
+}
+
+function closeExerciseForm() {
+  const modal = document.getElementById('ex-form-modal');
+  if (modal) modal.remove();
+}
+
+function saveExerciseFromForm(type, idx) {
+  const nameEl = document.getElementById('ef-name');
+  const name = nameEl.value.trim();
+  if (!name) { nameEl.focus(); return; }
+
+  const sets    = Math.max(1, parseInt(document.getElementById('ef-sets').value) || 3);
+  const target  = document.getElementById('ef-target').value.trim() || '8–12';
+  const unit    = document.getElementById('ef-unit').value;
+  const restSec = parseInt(document.getElementById('ef-rest').value);
+  const restLabels = { 60: '1 דקה', 90: 'דקה וחצי', 120: '2 דקות', 180: '3 דקות' };
+  const rest    = restLabels[restSec] || '2 דקות';
+  const hasSs   = document.getElementById('ef-superset').checked;
+  let supersetId = null;
+  if (hasSs) {
+    const sid = document.getElementById('ef-ss-id').value.trim();
+    supersetId = sid || `${type}_ss_${Date.now()}`;
+  }
+
+  const exObj = { name, sets, target, unit, restSec, rest, type: unit === 'שניות' ? 'seconds' : 'reps', supersetId };
+
+  const exercises = window._pendingPlan[type].exercises;
+  if (idx >= 0) {
+    exercises[idx] = exObj;
+  } else {
+    exercises.push(exObj);
+  }
+
+  closeExerciseForm();
+  refreshPlanExerciseList();
 }
 
 function confirmPlan() {
@@ -1518,6 +1746,17 @@ function computeEntry(entry) {
     protein: +(food.per100.protein * k).toFixed(1),
     carbs:   +(food.per100.carbs   * k).toFixed(1),
     fat:     +(food.per100.fat     * k).toFixed(1),
+  };
+}
+
+function computeRecipeItem(item) {
+  if (item.type === 'manual') return { cal: +item.cal, protein: +item.protein };
+  const food = state.foods.find(f => f.id === item.foodId);
+  if (!food) return { cal: 0, protein: 0 };
+  const k = food.unit === 'unit' ? item.grams : item.grams / 100;
+  return {
+    cal:     +(food.per100.cal     * k).toFixed(0),
+    protein: +(food.per100.protein * k).toFixed(1),
   };
 }
 
@@ -1705,28 +1944,50 @@ function viewNutritionToday() {
 function viewNutritionRecipe() {
   const items = state.recipeItems;
   const total = items.reduce((acc, item) => {
-    acc.cal     += +item.cal;
-    acc.protein += +item.protein;
+    const m = computeRecipeItem(item);
+    acc.cal     += +m.cal;
+    acc.protein += +m.protein;
     return acc;
   }, { cal: 0, protein: 0 });
 
-  const { ate, total: tot } = state.recipePortions;
-  const fraction = tot > 0 ? ate / tot : 1;
-  const portion = {
-    cal:     +(total.cal     * fraction).toFixed(0),
-    protein: +(total.protein * fraction).toFixed(1),
-  };
-
   const itemsList = items.length
-    ? items.map(item => `
-      <div class="recipe-item">
-        <div class="food-log-main">
-          <span class="food-log-name">${item.name}</span>
-          <button class="food-log-del" onclick="removeRecipeItem('${item.id}')">✕</button>
-        </div>
-        <div class="food-log-macros">${item.cal} קל · ${item.protein}g חלבון</div>
-      </div>`).join('')
-    : `<div class="chart-empty" style="margin:10px 0">הוסף מרכיבים לתבשיל</div>`;
+    ? items.map(item => {
+        const m = computeRecipeItem(item);
+        if (item.type === 'manual') {
+          return `
+            <div class="recipe-item">
+              <div class="food-log-main">
+                <span class="food-log-name">${item.name}</span>
+                <button class="food-log-del" onclick="removeRecipeItem('${item.id}')">✕</button>
+              </div>
+              <div class="food-log-macros">${m.cal} קל · ${m.protein}g חלבון</div>
+            </div>`;
+        }
+        const food = state.foods.find(f => f.id === item.foodId);
+        const qLabel = !food || food.unit === 'g' ? 'g' : food.unit === 'ml' ? 'מ"ל' : 'יח׳';
+        return `
+          <div class="recipe-item">
+            <div class="food-log-main">
+              <span class="food-log-name">${item.foodName}</span>
+              <button class="food-log-del" onclick="removeRecipeItem('${item.id}')">✕</button>
+            </div>
+            <div class="recipe-slider-row">
+              <input type="range" min="0" max="250" step="1" value="${item.grams}"
+                class="recipe-slider" id="slider-range-${item.id}"
+                oninput="updateRecipeSlider('${item.id}', +this.value)">
+            </div>
+            <div class="recipe-qty-row">
+              <button class="recipe-qty-btn" onclick="stepRecipeItem('${item.id}', -1)">−</button>
+              <input class="recipe-qty-input" type="number" id="slider-num-${item.id}"
+                min="0" max="250" value="${item.grams}"
+                oninput="updateRecipeSlider('${item.id}', Math.min(250, Math.max(0, +this.value || 0)))">
+              <span class="recipe-qty-unit">${qLabel}</span>
+              <button class="recipe-qty-btn" onclick="stepRecipeItem('${item.id}', 1)">+</button>
+            </div>
+            <div class="food-log-macros" id="item-macros-${item.id}">${m.cal} קל · ${m.protein}g חלבון${m.protein > 0 ? ` · <span class="cal-protein-ratio">${(m.cal / m.protein).toFixed(1)} קל/g</span>` : ''}</div>
+          </div>`;
+      }).join('')
+    : `<div class="chart-empty" style="margin:10px 0">הוסף מרכיבים למנה</div>`;
 
   const isManual = state.recipeAddMode === 'manual';
   const addItemForm = state.showRecipeAddItem
@@ -1765,7 +2026,7 @@ function viewNutritionRecipe() {
           <div id="recipe-food-search-results" class="food-search-results"></div>
         </div>
         <div class="form-field" style="margin-top:8px">
-          <label class="form-lbl" id="recipe-grams-label">כמות (גרמים)</label>
+          <label class="form-lbl" id="recipe-grams-label">כמות התחלתית (גרמים)</label>
           <input class="form-inp" type="number" inputmode="decimal" id="recipe-grams" placeholder="100">
         </div>`}
         <div style="display:flex;gap:8px;margin-top:10px">
@@ -1777,30 +2038,19 @@ function viewNutritionRecipe() {
 
   return `<div class="view">
     ${nutritionSubNav()}
-    <div class="sec-label">מרכיבי התבשיל</div>
+    ${items.length ? `
+    <div class="recipe-total-card" id="recipe-total-live">
+      <span class="recipe-total-num">${Math.round(total.cal)}</span><span class="recipe-total-unit">קל</span>
+      <span class="recipe-total-dot">·</span>
+      <span class="recipe-total-num">${total.protein.toFixed(1)}</span><span class="recipe-total-unit">g חלבון</span>
+      ${total.protein > 0 ? `<span class="recipe-total-dot">·</span><span class="recipe-total-ratio">${(total.cal / total.protein).toFixed(1)} קל/g</span>` : ''}
+    </div>` : ''}
+    <div class="sec-label">מרכיבים</div>
     <div class="recipe-items-list">${itemsList}</div>
     ${addItemForm}
     ${items.length ? `
-    <div class="sec-label" style="margin-top:16px">חלוקת מנות</div>
-    <div class="recipe-portions-row">
-      <span class="recipe-portions-label">אכלתי</span>
-      <input class="form-inp recipe-portions-inp" type="number" inputmode="decimal" id="recipe-ate"
-        value="${ate}" min="0.5" step="0.5"
-        onchange="state.recipePortions.ate=+this.value||1;render('nutrition')"
-        oninput="state.recipePortions.ate=+this.value||1;render('nutrition')">
-      <span class="recipe-portions-label">מנות מתוך</span>
-      <input class="form-inp recipe-portions-inp" type="number" inputmode="decimal" id="recipe-total"
-        value="${tot}" min="1" step="0.5"
-        onchange="state.recipePortions.total=+this.value||1;render('nutrition')"
-        oninput="state.recipePortions.total=+this.value||1;render('nutrition')">
-      <span class="recipe-portions-label">סה"כ</span>
-    </div>
-    <div class="recipe-portion-summary">
-      <div class="recipe-portion-title">המנה שלי (${ate}/${tot})</div>
-      <div class="recipe-portion-macros">${portion.cal} קל &nbsp;·&nbsp; ${portion.protein}g חלבון</div>
-    </div>
-    <button class="form-submit" style="width:100%;margin-top:12px" onclick="logRecipePortion()">הוסף לאכילה היום</button>
-    <button class="ghost-btn" style="width:100%;margin-top:6px;font-size:12px" onclick="state.recipeItems=[];render('nutrition')">נקה תבשיל</button>
+    <button class="form-submit" style="width:100%;margin-top:16px" onclick="logRecipePortion()">הוסף לאכילה היום</button>
+    <button class="ghost-btn" style="width:100%;margin-top:6px;font-size:12px" onclick="state.recipeItems=[];render('nutrition')">נקה מנה</button>
     ` : ''}
   </div>`;
 }
@@ -1900,29 +2150,69 @@ function selectRecipeFood(id, name, unit) {
   }
 }
 
+function updateRecipeSlider(id, grams) {
+  const item = state.recipeItems.find(i => String(i.id) === String(id));
+  if (!item || item.type === 'manual') return;
+  grams = Math.min(250, Math.max(0, grams));
+  item.grams = grams;
+
+  const rangeEl = document.getElementById(`slider-range-${id}`);
+  if (rangeEl) rangeEl.value = grams;
+  const numEl = document.getElementById(`slider-num-${id}`);
+  if (numEl) numEl.value = grams;
+
+  const m = computeRecipeItem(item);
+  const macrosEl = document.getElementById(`item-macros-${id}`);
+  if (macrosEl) macrosEl.innerHTML = `${m.cal} קל · ${m.protein}g חלבון${m.protein > 0 ? ` · <span class="cal-protein-ratio">${(m.cal / m.protein).toFixed(1)} קל/g</span>` : ''}`;
+
+  _updateRecipeTotalsDOM();
+}
+
+function stepRecipeItem(id, delta) {
+  const item = state.recipeItems.find(i => String(i.id) === String(id));
+  if (!item) return;
+  updateRecipeSlider(id, item.grams + delta);
+}
+
+function _updateRecipeTotalsDOM() {
+  const total = state.recipeItems.reduce((acc, item) => {
+    const m = computeRecipeItem(item);
+    acc.cal     += +m.cal;
+    acc.protein += +m.protein;
+    return acc;
+  }, { cal: 0, protein: 0 });
+
+  const liveEl = document.getElementById('recipe-total-live');
+  if (liveEl) {
+    liveEl.innerHTML =
+      `<span class="recipe-total-num">${Math.round(total.cal)}</span><span class="recipe-total-unit">קל</span>` +
+      `<span class="recipe-total-dot">·</span>` +
+      `<span class="recipe-total-num">${total.protein.toFixed(1)}</span><span class="recipe-total-unit">g חלבון</span>` +
+      (total.protein > 0 ? `<span class="recipe-total-dot">·</span><span class="recipe-total-ratio">${(total.cal / total.protein).toFixed(1)} קל/g</span>` : '');
+  }
+
+}
+
 function addRecipeItem() {
   if (state.recipeAddMode === 'manual') {
     const name    = document.getElementById('recipe-manual-name')?.value.trim() || 'מרכיב';
     const cal     = parseFloat(document.getElementById('recipe-manual-cal')?.value)     || 0;
     const protein = parseFloat(document.getElementById('recipe-manual-protein')?.value) || 0;
     if (!cal && !protein) { toast('הזן לפחות ערך תזונתי אחד'); return; }
-    state.recipeItems.push({ id: Date.now(), name, cal, protein });
+    state.recipeItems.push({ id: Date.now(), type: 'manual', name, cal, protein });
   } else {
     const foodId = parseInt(document.getElementById('recipe-food-select')?.value);
-    const grams  = parseFloat(document.getElementById('recipe-grams')?.value) || 0;
+    const grams  = parseFloat(document.getElementById('recipe-grams')?.value) || 100;
     if (!foodId) { toast('בחר מוצר מהרשימה'); return; }
-    if (!grams)  { toast('הזן כמות'); return; }
     const food = state.foods.find(f => f.id === foodId);
     if (!food) { toast('מוצר לא נמצא'); return; }
-    const k = (food.unit === 'unit') ? grams : grams / 100;
-    const qLabel = food.unit === 'unit' ? ' יח׳' : food.unit === 'ml' ? 'מ"ל' : 'g';
     state.recipeItems.push({
-      id:      Date.now(),
-      name:    `${food.name} (${grams}${qLabel})`,
-      cal:     +(food.per100.cal     * k).toFixed(0),
-      protein: +(food.per100.protein * k).toFixed(1),
-      carbs:   +(food.per100.carbs   * k).toFixed(1),
-      fat:     +(food.per100.fat     * k).toFixed(1),
+      id:       Date.now(),
+      type:     'product',
+      foodId:   food.id,
+      foodName: food.name,
+      unit:     food.unit || 'g',
+      grams:    Math.min(250, Math.max(0, grams)),
     });
   }
   state.showRecipeAddItem = false;
@@ -1937,17 +2227,16 @@ function removeRecipeItem(id) {
 function logRecipePortion() {
   if (!state.recipeItems.length) { toast('הוסף מרכיבים תחילה'); return; }
   const total = state.recipeItems.reduce((acc, item) => {
-    acc.cal     += +item.cal;
-    acc.protein += +item.protein;
+    const m = computeRecipeItem(item);
+    acc.cal     += +m.cal;
+    acc.protein += +m.protein;
     return acc;
   }, { cal: 0, protein: 0 });
-  const { ate, total: tot } = state.recipePortions;
-  const f = tot > 0 ? ate / tot : 1;
   const macros = {
-    cal:     +(total.cal     * f).toFixed(0),
-    protein: +(total.protein * f).toFixed(1),
+    cal:     +(total.cal).toFixed(0),
+    protein: +(total.protein).toFixed(1),
   };
-  state.foodLog.push({ id: Date.now(), date: todayStr(), name: `תבשיל (${ate}/${tot})`, macros });
+  state.foodLog.push({ id: Date.now(), date: todayStr(), name: 'מנה מהמחשבון', macros });
   state.recipeItems        = [];
   state.showRecipeAddItem  = false;
   state.nutritionSubTab    = 'today';

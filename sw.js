@@ -1,9 +1,10 @@
-const CACHE = 'cali-v8';
+const CACHE = 'cali-v19';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './pdf-parser.js',
   './manifest.json',
   './icon.svg',
 ];
