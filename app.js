@@ -147,6 +147,7 @@ const state = {
   recipePortions:      { ate: 1, total: 3 },
   showRecipeAddItem:   false,
   recipeAddMode:       'product', // 'product' | 'manual'
+  editingProductId:    null,      // id of product being edited inline
 };
 
 // ── Storage ─────────────────────────────────
@@ -281,9 +282,10 @@ function render(tab) {
   }
   // Reset transient nutrition UI when leaving the tab
   if (tab !== 'nutrition') {
-    state.showAddFood      = false;
-    state.showAddProduct   = false;
+    state.showAddFood       = false;
+    state.showAddProduct    = false;
     state.showRecipeAddItem = false;
+    state.editingProductId  = null;
   }
   switch (tab) {
     case 'home':         main.innerHTML = viewHome();         break;
@@ -1793,6 +1795,39 @@ function macroBar(label, val, target, color) {
   </div>`;
 }
 
+function proteinRangeBar(label, val, targetMin, targetMax) {
+  if (targetMin == null) return macroBar(label, val, targetMax, 'var(--p)');
+
+  const over  = val > targetMax;
+  const atMin = val >= targetMin;
+  const pct   = targetMax > 0 ? Math.min(100, Math.round(val / targetMax * 100)) : 0;
+  const fillColor = over ? 'var(--red)' : atMin ? 'var(--p)' : 'var(--gold)';
+
+  let remText;
+  if (over)         remText = `חרגת ב-${+(val - targetMax).toFixed(1)}`;
+  else if (atMin)   remText = 'מינימום הושג! ✓';
+  else              remText = `נשאר למינימום: ${+(targetMin - val).toFixed(1)}`;
+
+  const minPct  = targetMax > 0 ? Math.min(100, Math.round(targetMin / targetMax * 100)) : 0;
+  const minTick = targetMin > 0
+    ? `<div class="range-bar-tick range-bar-tick-min" style="left:${minPct}%"></div>`
+    : '';
+
+  return `<div class="macro-bar-wrap">
+    <div class="macro-bar-top">
+      <span class="macro-bar-label">${label}</span>
+      <span class="macro-bar-nums${over ? ' macro-over' : ''}">${val} / ${targetMax}
+        <span class="range-bar-minmax-hint">(מינ׳ ${targetMin})</span>
+      </span>
+    </div>
+    <div class="macro-bar-track range-bar-track">
+      <div class="macro-bar-fill" style="width:${pct}%;background:${fillColor}"></div>
+      ${minTick}
+    </div>
+    <div class="macro-bar-rem${atMin && !over ? ' macro-bar-rem-ok' : ''}">${remText}</div>
+  </div>`;
+}
+
 function nutritionSubNav() {
   return `<div class="hist-tab-row">
     <button class="hist-tab-btn${state.nutritionSubTab === 'today' ? ' active' : ''}"
@@ -1824,8 +1859,12 @@ function viewNutritionSetup() {
           <input class="form-inp" type="number" inputmode="decimal" id="target-cal" placeholder="2000" value="${t.cal || ''}">
         </div>
         <div class="form-field">
-          <label class="form-lbl">חלבון (גרם)</label>
+          <label class="form-lbl">חלבון — מקסימום (g)</label>
           <input class="form-inp" type="number" inputmode="decimal" id="target-protein" placeholder="150" value="${t.protein || ''}">
+        </div>
+        <div class="form-field" style="grid-column: span 2">
+          <label class="form-lbl">חלבון — מינימום (g) <span style="font-weight:400;color:var(--t-dim)">(אופציונלי)</span></label>
+          <input class="form-inp" type="number" inputmode="decimal" id="target-protein-min" placeholder="120" value="${t.proteinMin != null ? t.proteinMin : ''}">
         </div>
       </div>
       <button class="form-submit" id="save-targets-btn">שמור יעדים</button>
@@ -1849,9 +1888,20 @@ function viewNutritionToday() {
       היום: ${todayRatio ? `<b>${todayRatio}</b>` : '—'}
     </span>
   </div>`;
+  const remainProtein = +(Math.max(0, t.protein - totals.protein)).toFixed(1);
+  const proteinHint = remainProtein > 0 && t.cal > 0 && t.protein > 0 ? (() => {
+    const R = (t.cal / t.protein).toFixed(1);
+    const Y = Math.round(remainProtein * t.cal / t.protein);
+    return `<div class="protein-hint-row">
+      עליך לאכול עוד <strong>${remainProtein}g חלבון</strong>
+      &nbsp;·&nbsp; ביחס <strong>${R} קל/g</strong> זה <strong>${Y} קל</strong>
+    </div>`;
+  })() : '';
+
   const macros = `<div class="nutrition-macros">
     ${macroBar('קלוריות', totals.cal, t.cal, 'var(--gold)')}
-    ${macroBar('חלבון', totals.protein, t.protein, 'var(--p)')}
+    ${proteinRangeBar('חלבון', totals.protein, t.proteinMin ?? null, t.protein)}
+    ${proteinHint}
     ${ratioRow}
   </div>`;
 
@@ -2057,15 +2107,58 @@ function viewNutritionRecipe() {
 
 // ── Products list view ────────────────────────
 function viewNutritionProducts() {
-  const productItems = state.foods.map(f => `
-    <div class="food-product-item">
-      <div class="food-log-main">
-        <span class="food-log-name">${f.name}</span>
-        <span class="food-log-unit-badge">${productUnitLabel(f.unit || 'g')}</span>
-        <button class="food-log-del" onclick="deleteFood('${f.id}')">✕</button>
-      </div>
-      <div class="food-log-macros">${productPer100Label(f.unit || 'g')}: ${f.per100.cal} קל · ${f.per100.protein}g חלבון${f.per100.protein > 0 ? ` · <span class="cal-protein-ratio">יחס: ${(f.per100.cal / f.per100.protein).toFixed(1)}</span>` : ''}</div>
-    </div>`).join('');
+  const productItems = state.foods.map(f => {
+    if (String(state.editingProductId) === String(f.id)) {
+      const perLbl = f.unit === 'unit' ? 'ליחידה' : f.unit === 'ml' ? 'ל-100מ"ל' : 'ל-100g';
+      return `
+        <div class="food-product-item food-product-editing">
+          <div class="form-field" style="margin-bottom:8px">
+            <label class="form-lbl">שם המוצר</label>
+            <input class="form-inp" type="text" id="edit-prod-name-${f.id}"
+              value="${f.name.replace(/"/g, '&quot;')}" style="text-align:right">
+          </div>
+          <div class="form-field" style="margin-bottom:8px">
+            <label class="form-lbl">יחידת מידה</label>
+            <div class="unit-toggle-row">
+              <button type="button" class="unit-toggle-btn${(f.unit || 'g') === 'g' ? ' active' : ''}"
+                id="edit-unit-btn-g-${f.id}" onclick="setEditProdUnit('${f.id}','g')">גרמים</button>
+              <button type="button" class="unit-toggle-btn${f.unit === 'ml' ? ' active' : ''}"
+                id="edit-unit-btn-ml-${f.id}" onclick="setEditProdUnit('${f.id}','ml')">מ"ל</button>
+              <button type="button" class="unit-toggle-btn${f.unit === 'unit' ? ' active' : ''}"
+                id="edit-unit-btn-unit-${f.id}" onclick="setEditProdUnit('${f.id}','unit')">יחידות</button>
+            </div>
+            <input type="hidden" id="edit-prod-unit-${f.id}" value="${f.unit || 'g'}">
+          </div>
+          <div class="form-grid" style="margin-bottom:8px">
+            <div class="form-field">
+              <label class="form-lbl" id="edit-prod-cal-lbl-${f.id}">קלוריות (${perLbl})</label>
+              <input class="form-inp" type="number" inputmode="decimal"
+                id="edit-prod-cal-${f.id}" value="${f.per100.cal}">
+            </div>
+            <div class="form-field">
+              <label class="form-lbl">חלבון (g)</label>
+              <input class="form-inp" type="number" inputmode="decimal"
+                id="edit-prod-protein-${f.id}" value="${f.per100.protein}">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="form-submit" style="flex:1;padding:10px"
+              onclick="saveProductEdit('${f.id}')">שמור</button>
+            <button class="ghost-btn" onclick="cancelEditProduct()">ביטול</button>
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="food-product-item">
+        <div class="food-log-main">
+          <span class="food-log-name">${f.name}</span>
+          <span class="food-log-unit-badge">${productUnitLabel(f.unit || 'g')}</span>
+          <button class="food-log-edit" onclick="startEditProduct('${f.id}')">✏</button>
+          <button class="food-log-del"  onclick="deleteFood('${f.id}')">✕</button>
+        </div>
+        <div class="food-log-macros">${productPer100Label(f.unit || 'g')}: ${f.per100.cal} קל · ${f.per100.protein}g חלבון${f.per100.protein > 0 ? ` · <span class="cal-protein-ratio">יחס: ${(f.per100.cal / f.per100.protein).toFixed(1)}</span>` : ''}</div>
+      </div>`;
+  }).join('');
 
   const addProductForm = state.showAddProduct
     ? `<div class="add-food-form">
@@ -2252,10 +2345,14 @@ function bindNutrition() {
 }
 
 function saveNutritionTargets() {
-  const cal     = parseFloat(document.getElementById('target-cal')?.value)     || 0;
-  const protein = parseFloat(document.getElementById('target-protein')?.value) || 0;
+  const cal        = parseFloat(document.getElementById('target-cal')?.value)         || 0;
+  const protein    = parseFloat(document.getElementById('target-protein')?.value)     || 0;
+  const proteinMin = parseFloat(document.getElementById('target-protein-min')?.value) || null;
   if (!cal && !protein) { toast('הזן לפחות יעד אחד'); return; }
-  state.nutritionTargets = { cal, protein };
+  if (proteinMin !== null && proteinMin >= protein) {
+    toast('מינימום חלבון חייב להיות קטן מהמקסימום'); return;
+  }
+  state.nutritionTargets = { cal, protein, proteinMin: proteinMin || null };
   saveNutrition();
   render('nutrition');
   toast('יעדים נשמרו! 🥗');
@@ -2298,6 +2395,43 @@ function deleteFood(id) {
   state.foods = state.foods.filter(f => String(f.id) !== String(id));
   saveNutrition();
   render('nutrition');
+}
+
+function startEditProduct(id) {
+  state.editingProductId = id;
+  render('nutrition');
+}
+
+function cancelEditProduct() {
+  state.editingProductId = null;
+  render('nutrition');
+}
+
+function saveProductEdit(id) {
+  const idx = state.foods.findIndex(f => String(f.id) === String(id));
+  if (idx === -1) return;
+  const name    = document.getElementById(`edit-prod-name-${id}`)?.value.trim();
+  const unit    = document.getElementById(`edit-prod-unit-${id}`)?.value || 'g';
+  const cal     = parseFloat(document.getElementById(`edit-prod-cal-${id}`)?.value)     || 0;
+  const protein = parseFloat(document.getElementById(`edit-prod-protein-${id}`)?.value) || 0;
+  if (!name) { toast('הזן שם מוצר'); return; }
+  state.foods[idx] = { ...state.foods[idx], name, unit, per100: { cal, protein } };
+  state.editingProductId = null;
+  saveNutrition();
+  render('nutrition');
+  toast(`${name} עודכן!`);
+}
+
+function setEditProdUnit(id, unit) {
+  const hidden = document.getElementById(`edit-prod-unit-${id}`);
+  if (hidden) hidden.value = unit;
+  ['g', 'ml', 'unit'].forEach(u => {
+    const btn = document.getElementById(`edit-unit-btn-${u}-${id}`);
+    if (btn) btn.classList.toggle('active', u === unit);
+  });
+  const perLbl = unit === 'unit' ? 'ליחידה' : unit === 'ml' ? 'ל-100מ"ל' : 'ל-100g';
+  const calLbl = document.getElementById(`edit-prod-cal-lbl-${id}`);
+  if (calLbl) calLbl.textContent = `קלוריות (${perLbl})`;
 }
 
 function filterFoodList(query) {

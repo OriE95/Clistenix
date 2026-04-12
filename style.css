@@ -1701,6 +1701,56 @@ html, body {
   text-align: left;
 }
 
+.macro-bar-rem-ok {
+  color: var(--p) !important;
+  font-weight: 700;
+}
+
+/* Range bar tick mark */
+.range-bar-track {
+  position: relative;
+  overflow: visible;
+}
+
+.range-bar-tick {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: calc(100% + 6px);
+  border-radius: 1px;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.range-bar-tick-min {
+  background: var(--gold);
+  opacity: 0.9;
+}
+
+.range-bar-minmax-hint {
+  font-size: 10px;
+  color: var(--t-dim);
+  font-weight: 400;
+  margin-right: 4px;
+}
+
+/* Protein completion hint */
+.protein-hint-row {
+  font-size: 11px;
+  color: var(--t-sub);
+  line-height: 1.6;
+  padding: 4px 0 2px;
+  border-top: 1px dashed var(--border);
+  margin-top: 4px;
+  direction: rtl;
+  text-align: right;
+}
+
+.protein-hint-row strong {
+  color: var(--p);
+  font-weight: 700;
+}
+
 /* Food log */
 .food-log-list {
   display: flex;
@@ -1755,6 +1805,25 @@ html, body {
 }
 
 .food-log-del:active { color: var(--red); }
+
+.food-log-edit {
+  background: none;
+  border: none;
+  color: var(--t-dim);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.food-log-edit:active { color: var(--p); }
+
+.food-product-editing {
+  border-color: var(--p) !important;
+  background: rgba(12,166,120,0.03) !important;
+}
 
 /* Unit toggle row in product form */
 .unit-toggle-row {
