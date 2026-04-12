@@ -1,4 +1,4 @@
-const CACHE = 'cali-v21';
+const CACHE = 'cali-v22';
 const ASSETS = [
   './',
   './index.html',
