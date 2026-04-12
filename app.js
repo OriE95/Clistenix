@@ -63,6 +63,68 @@ const DEFAULT_LINKS = {
   referral:  'https://bit.ly/4euKJCl',
 };
 
+// ── Level-based Plans ────────────────────────
+const LEVEL_PLANS = {
+  '0': DEFAULT_PLANS,
+  '0.3': {
+    A: {
+      name: 'אימון A',
+      exercises: [
+        { name: 'מתח סופינציה – חצי טווח עליון',   sets: 3, target: '2–6',   unit: 'חזרות', restSec: 180, type: 'reps'    },
+        { name: 'מתח פרונציה – חצי טווח תחתון',    sets: 3, target: '2–5',   unit: 'חזרות', restSec: 150, type: 'reps'    },
+        { name: 'מקבילים עם עזרת רגליים',           sets: 4, target: '5–8',   unit: 'חזרות', restSec: 120, type: 'reps'    },
+        { name: 'שכיבות סמיכה יהלום',               sets: 3, target: '8–16',  unit: 'חזרות', restSec: 0,   type: 'reps',    supersetId: 'ss1' },
+        { name: 'מתח אוסטרלי בסופינציה',            sets: 3, target: '8–16',  unit: 'חזרות', restSec: 90,  type: 'reps',    supersetId: 'ss1' },
+      ]
+    },
+    B: {
+      name: 'אימון B',
+      exercises: [
+        { name: 'מתח סופינציה – החזקה 90 מעלות',   sets: 3, target: '6–20',  unit: 'שניות', restSec: 150, type: 'seconds' },
+        { name: 'מתח סופינציה – סנטר מעל מתח',     sets: 1, target: 'מקסימום', unit: 'שניות', restSec: 180, type: 'seconds' },
+        { name: 'מקבילים שליליים עם עצירות',        sets: 4, target: '3',     unit: 'חזרות', restSec: 120, type: 'reps'    },
+        { name: 'תלייה מתה',                        sets: 2, target: 'עד 90', unit: 'שניות', restSec: 120, type: 'seconds' },
+        { name: 'פלאנק גבוה',                       sets: 2, target: '40–60', unit: 'שניות', restSec: 60,  type: 'seconds' },
+      ]
+    },
+    legs: {
+      name: 'אימון רגליים',
+      exercises: [
+        { name: 'חצי סקוואט',                      sets: 3, target: 'עד 25', unit: 'חזרות',   restSec: 90, type: 'reps' },
+        { name: 'לאנג׳ עם תמיכה של הידיים',        sets: 3, target: '8–12',  unit: 'לכל רגל', restSec: 90, type: 'reps' },
+        { name: 'סטפ אפ',                          sets: 3, target: '8–12',  unit: 'לכל רגל', restSec: 90, type: 'reps' },
+        { name: 'פלור טאפס',                       sets: 2, target: 'עד 20', unit: 'חזרות',   restSec: 60, type: 'reps' },
+        { name: 'הרמות תאומים עם הקיר',            sets: 3, target: 'עד 25', unit: 'חזרות',   restSec: 60, type: 'reps' },
+      ]
+    }
+  }
+};
+
+const LEVEL_LINKS = {
+  '0': DEFAULT_LINKS,
+  '0.3': {
+    general: {
+      explain:   'https://eliyabonen.com/explain/',
+      nutrition: 'https://eliyabonen.com/nutrition/',
+      equipment: 'https://theroadto.co.il/discount/bonentrt',
+    },
+    warmup: {
+      upper: 'https://www.youtube.com/watch?v=El-gmBoU8dg',
+      lower: 'https://www.youtube.com/watch?v=hMyYevAin0I',
+    },
+    exercises: {
+      'מתח אוסטרלי בסופינציה': 'https://www.youtube.com/watch?v=kfZ1kS4IN-w',
+      'תלייה מתה':             'https://www.youtube.com/watch?v=mtVKbwCYXJ8',
+      'חצי סקוואט':           'https://www.youtube.com/watch?v=_aqbCBsP0dA',
+      'סטפ אפ':               'https://www.youtube.com/watch?v=UHK6R_YQ7T4',
+      'פלור טאפס':            'https://www.youtube.com/watch?v=OQiAmalrPj8',
+      'הרמות תאומים עם הקיר': 'https://www.youtube.com/watch?v=9s23Ja-Jc9Y',
+    },
+    challenge: 'https://www.youtube.com/watch?v=5VyccBg6VMk',
+    referral:  'https://bit.ly/4euKJCl',
+  }
+};
+
 // Active plan — loaded from localStorage or set by PDF parser
 let PLANS = DEFAULT_PLANS;
 let LINKS = {};
@@ -133,6 +195,7 @@ const state = {
   charts:         {},   // Chart.js instances
   progressCharts: {},   // Chart.js instances for exercise progress
   meta:           { name: '', stage: '' }, // trainee info from PDF
+  level:          '0',  // current plan level ('0' | '0.3')
   progressTab:    false, // true = show progress charts in history
   // ── Nutrition ──────────────────────────────
   nutritionTargets: null, // { cal, protein, carbs, fat }
@@ -173,6 +236,8 @@ function load() {
   if (p) PLANS = JSON.parse(p);
   LINKS = l ? JSON.parse(l) : {};
   if (mt) state.meta = JSON.parse(mt);
+  const lv = localStorage.getItem('cali_level');
+  state.level = lv || '0';
 }
 
 function saveNutrition() {
@@ -322,7 +387,7 @@ function viewHome() {
       <span class="hero-tag done">✓ הושלם</span>`;
   } else if (ww.filter(w => w.type === 'A' || w.type === 'B').length >= 3) {
     heroHTML = `
-      <div class="hero-eyebrow">שלב הבסיס | רמה 0</div>
+      <div class="hero-eyebrow">שלב הבסיס | רמה ${state.level || '0'}</div>
       <div class="hero-title">מנוחה</div>
       <div class="hero-sub">3 אימונים הושלמו השבוע. תנוח.</div>
       <span class="hero-tag rest">😴 יום מנוחה</span>`;
@@ -373,27 +438,9 @@ function viewHome() {
       <div class="meas-row">${items}</div>`;
   }
 
-  // General links section (shown when links are available)
-  const gl = LINKS.general || {};
-  const linksHTML = (gl.explain || gl.nutrition || gl.equipment || LINKS.challenge) ? `
-    <div class="sec-label">מאגר חובה</div>
-    <div class="home-links">
-      ${gl.explain   ? `<button class="home-link-btn" onclick="openLink('${gl.explain}')">📺 הסבר על שלב הבסיס</button>` : ''}
-      ${gl.nutrition ? `<button class="home-link-btn" onclick="openLink('${gl.nutrition}')">🥗 הסבר על תזונה</button>` : ''}
-      ${gl.equipment ? `<button class="home-link-btn" onclick="openLink('${gl.equipment}')">🛒 ציוד קליסטניקס</button>` : ''}
-      ${LINKS.challenge ? `<button class="home-link-btn" onclick="openLink('${LINKS.challenge}')">⚔ סרטון אתגר מעבר #0</button>` : ''}
-    </div>` : '';
-
-  // Stage name + daily quote banner
-  const metaBanner = (state.meta.stage || state.meta.name) ? `
-    <div class="plan-banner">
-      ${state.meta.stage ? `<div class="plan-stage">${state.meta.stage}</div>` : ''}
-      ${state.meta.name  ? `<div class="plan-quote">${getDailyQuote(state.meta.name)}</div>` : ''}
-    </div>` : '';
 
   return `<div class="view">
     <div class="hero">${heroHTML}</div>
-    ${metaBanner}
     <div class="stats-row">
       <div class="stat-card">
         <div class="stat-val">${total}</div>
@@ -410,7 +457,6 @@ function viewHome() {
     </div>
     <div class="sec-label">השבוע הנוכחי</div>
     <div class="week-grid">${cols}</div>
-    ${linksHTML}
     ${measHTML}
     ${(state.workouts.length || state.measurements.length) ? `
     <button class="export-btn" onclick="exportToCSV()">
@@ -1440,6 +1486,55 @@ function toast(msg) {
 //  SETUP / ONBOARDING SCREEN
 // ══════════════════════════════════════════════
 
+// ══════════════════════════════════════════════
+//  LEVEL SELECTION
+// ══════════════════════════════════════════════
+
+function showLevelSelect() {
+  const hasExisting = hasSavedPlan();
+  document.getElementById('bottom-nav').style.display = 'none';
+  document.getElementById('main-content').innerHTML = viewLevelSelect(hasExisting);
+}
+
+function viewLevelSelect(showBack = false) {
+  const cur = state.level || '0';
+  const backBtn = showBack
+    ? `<button class="setup-back-btn" onclick="cancelSetup()">← חזור</button>`
+    : '';
+  const levels = [
+    { id: '0',   label: 'רמה 0',   desc: 'מתח אוסטרלי · שכיבות על הברכיים\nתלייה מתה · תמיכה על מקבילים' },
+    { id: '0.3', label: 'רמה 0.3', desc: 'מתח סופינציה/פרונציה · מקבילים\nסופרסטים · פלאנק גבוה' },
+  ];
+  const cards = levels.map(lv => `
+    <div class="level-card${cur === lv.id ? ' active' : ''}" onclick="selectLevel('${lv.id}')">
+      <div class="level-card-badge">${lv.id}</div>
+      <div class="level-card-name">${lv.label}</div>
+      <div class="level-card-desc">${lv.desc.replace(/\n/g, '<br>')}</div>
+      ${cur === lv.id ? '<div class="level-card-check">✓ פעיל</div>' : ''}
+    </div>`).join('');
+  return `<div class="view setup-view">
+    ${backBtn}
+    <div class="setup-logo">⚔</div>
+    <div class="setup-title">בחר רמה</div>
+    <div class="setup-sub">כל רמה טוענת את האימונים המתאימים אוטומטית</div>
+    <div class="level-select-grid">${cards}</div>
+    ${showBack ? `<div class="setup-divider" style="margin-top:8px"><span>או</span></div>
+    <button class="big-btn big-btn-ghost" onclick="showSetup()">ערוך תוכנית ידנית</button>` : ''}
+  </div>`;
+}
+
+function selectLevel(level) {
+  const plan  = LEVEL_PLANS[level];
+  const links = LEVEL_LINKS[level];
+  if (!plan) return;
+  savePlan(plan);
+  saveLinks(links || {});
+  state.level = level;
+  localStorage.setItem('cali_level', level);
+  saveMeta('', `שלב הבסיס | רמה ${level}`);
+  finishSetup();
+}
+
 function showSetup() {
   const hasExisting = hasSavedPlan();
   // Initialize plan builder state fresh on each entry
@@ -1571,10 +1666,58 @@ function deletePlanExercise(type, idx) {
   refreshPlanExerciseList();
 }
 
+const _EX_SUGGESTIONS = [
+  'מתח סופינציה','מתח פרונטציה','תליה מתה','שכיבות סמיכה יהלום',
+  'מתח אוסטרלי בסופינציה','מקבילים עם עזרת הרגליים',
+  'מתח סופינציה - החזקה 90 מעלות','מתח סופינציה - החזקת סנטר מעל מתח',
+  'מקבילים שליליים עם עצירות','פלאנק גבוה',
+];
+
+function _unitOptions(selected) {
+  return ['חזרות', 'שניות', 'לכל רגל']
+    .map(u => `<option value="${u}"${u === (selected || 'חזרות') ? ' selected' : ''}>${u}</option>`)
+    .join('');
+}
+
+function _exRowHTML(name = '', target = '8–12', unit = 'חזרות') {
+  return `<div class="ef-ex-row">
+    <div class="ef-ex-row-header">
+      <input class="ex-form-input ef-row-name" type="text" list="ex-name-list"
+        value="${name.replace(/"/g,'&quot;')}" placeholder="שם התרגיל" dir="rtl" autocomplete="off">
+      <button type="button" class="ef-ex-row-del" onclick="removeExerciseRow(this)">✕</button>
+    </div>
+    <div class="ex-form-row" style="margin-top:6px">
+      <div class="ex-form-field">
+        <label class="ex-form-label">יעד</label>
+        <input class="ex-form-input ef-row-target" type="text" value="${target}" placeholder="8–12" dir="ltr">
+      </div>
+      <div class="ex-form-field">
+        <label class="ex-form-label">יחידה</label>
+        <select class="ex-form-select ef-row-unit">${_unitOptions(unit)}</select>
+      </div>
+    </div>
+  </div>`;
+}
+
 function showExerciseForm(type, idx) {
   const exercises = window._pendingPlan[type].exercises;
   const ex = idx >= 0 ? exercises[idx] : null;
-  const restSec = ex ? ex.restSec : 120;
+
+  // If editing a superset exercise, collect all exercises in the group
+  let groupExercises = [];
+  let groupIndices   = [];
+  if (ex && ex.supersetId) {
+    exercises.forEach((e, i) => {
+      if (e.supersetId === ex.supersetId) { groupExercises.push(e); groupIndices.push(i); }
+    });
+  } else if (ex) {
+    groupExercises = [ex];
+    groupIndices   = [idx];
+  }
+
+  const sharedEx    = groupExercises[0] || null;
+  const restSec     = sharedEx ? sharedEx.restSec : 120;
+  const sets        = sharedEx ? sharedEx.sets : 3;
 
   const restOptions = [
     { sec: 60,  label: '1 דקה' },
@@ -1583,70 +1726,71 @@ function showExerciseForm(type, idx) {
     { sec: 180, label: '3 דקות' },
   ].map(o => `<option value="${o.sec}"${restSec === o.sec ? ' selected' : ''}>${o.label}</option>`).join('');
 
-  const unitOptions = ['חזרות', 'שניות', 'לכל רגל']
-    .map(u => `<option value="${u}"${ex && ex.unit === u ? ' selected' : (!ex && u === 'חזרות' ? ' selected' : '')}>${u}</option>`)
-    .join('');
+  const datalist = `<datalist id="ex-name-list">
+    ${_EX_SUGGESTIONS.map(s => `<option value="${s}">`).join('')}
+  </datalist>`;
 
-  const hasSs = !!(ex && ex.supersetId);
+  const initialRows = groupExercises.length > 0
+    ? groupExercises.map(e => _exRowHTML(e.name, e.target, e.unit)).join('')
+    : _exRowHTML();
 
   const modal = document.createElement('div');
   modal.id = 'ex-form-modal';
   modal.className = 'ex-form-overlay';
   modal.innerHTML = `
+    ${datalist}
     <div class="ex-form-modal">
       <div class="ex-form-title">${idx >= 0 ? 'ערוך תרגיל' : 'תרגיל חדש'}</div>
-
-      <div class="ex-form-field">
-        <label class="ex-form-label">שם תרגיל</label>
-        <input class="ex-form-input" type="text" id="ef-name" value="${ex ? ex.name : ''}" placeholder="שם התרגיל" dir="rtl" autocomplete="off">
-      </div>
 
       <div class="ex-form-row">
         <div class="ex-form-field">
           <label class="ex-form-label">סטים</label>
-          <input class="ex-form-input" type="number" id="ef-sets" value="${ex ? ex.sets : 3}" min="1" max="20">
+          <input class="ex-form-input" type="number" id="ef-sets" value="${sets}" min="1" max="20">
         </div>
         <div class="ex-form-field">
-          <label class="ex-form-label">יעד</label>
-          <input class="ex-form-input" type="text" id="ef-target" value="${ex ? ex.target : '8–12'}" placeholder="8–12" dir="ltr">
-        </div>
-      </div>
-
-      <div class="ex-form-row">
-        <div class="ex-form-field">
-          <label class="ex-form-label">יחידה</label>
-          <select class="ex-form-select" id="ef-unit">${unitOptions}</select>
-        </div>
-        <div class="ex-form-field">
-          <label class="ex-form-label">מנוחה</label>
+          <label class="ex-form-label">מנוחה אחרי הסט</label>
           <select class="ex-form-select" id="ef-rest">${restOptions}</select>
         </div>
       </div>
 
-      <div class="ex-form-field">
-        <label class="ex-form-checkbox-label">
-          <input type="checkbox" id="ef-superset"${hasSs ? ' checked' : ''}>
-          <span>חלק מסופרסט</span>
-        </label>
-        <div id="ef-ss-id-wrap" style="display:${hasSs ? 'block' : 'none'};margin-top:6px">
-          <input class="ex-form-input" type="text" id="ef-ss-id" value="${ex && ex.supersetId ? ex.supersetId : ''}" placeholder="מזהה קבוצה (ייווצר אוטומטית)" dir="ltr">
-        </div>
-      </div>
+      <div class="ex-form-label" style="margin-bottom:6px">תרגילים בסט</div>
+      <div id="ef-exercises">${initialRows}</div>
+
+      <button type="button" class="ef-add-row-btn" onclick="addExerciseRow()">+ הוסף תרגיל לסופרסט</button>
 
       <div class="ex-form-actions">
         <button class="ex-form-cancel" onclick="closeExerciseForm()">ביטול</button>
-        <button class="ex-form-save" onclick="saveExerciseFromForm('${type}',${idx})">שמור</button>
+        <button class="ex-form-save" onclick="saveExerciseFromForm('${type}',${JSON.stringify(groupIndices)})">שמור</button>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
+  _updateExerciseRowDelButtons();
+  setTimeout(() => { const el = modal.querySelector('.ef-row-name'); if (el) el.focus(); }, 50);
+}
 
-  document.getElementById('ef-superset').addEventListener('change', function () {
-    document.getElementById('ef-ss-id-wrap').style.display = this.checked ? 'block' : 'none';
+function addExerciseRow(name = '', target = '8–12', unit = 'חזרות') {
+  const container = document.getElementById('ef-exercises');
+  if (!container) return;
+  container.insertAdjacentHTML('beforeend', _exRowHTML(name, target, unit));
+  _updateExerciseRowDelButtons();
+}
+
+function removeExerciseRow(btn) {
+  const container = document.getElementById('ef-exercises');
+  if (!container || container.children.length <= 1) return;
+  btn.closest('.ef-ex-row').remove();
+  _updateExerciseRowDelButtons();
+}
+
+function _updateExerciseRowDelButtons() {
+  const container = document.getElementById('ef-exercises');
+  if (!container) return;
+  const rows = container.querySelectorAll('.ef-ex-row');
+  rows.forEach(row => {
+    const btn = row.querySelector('.ef-ex-row-del');
+    if (btn) btn.style.display = rows.length > 1 ? '' : 'none';
   });
-
-  // Focus name field
-  setTimeout(() => { const el = document.getElementById('ef-name'); if (el) el.focus(); }, 50);
 }
 
 function closeExerciseForm() {
@@ -1654,31 +1798,45 @@ function closeExerciseForm() {
   if (modal) modal.remove();
 }
 
-function saveExerciseFromForm(type, idx) {
-  const nameEl = document.getElementById('ef-name');
-  const name = nameEl.value.trim();
-  if (!name) { nameEl.focus(); return; }
+function saveExerciseFromForm(type, groupIndices) {
+  const container = document.getElementById('ef-exercises');
+  if (!container) return;
 
   const sets    = Math.max(1, parseInt(document.getElementById('ef-sets').value) || 3);
-  const target  = document.getElementById('ef-target').value.trim() || '8–12';
-  const unit    = document.getElementById('ef-unit').value;
   const restSec = parseInt(document.getElementById('ef-rest').value);
   const restLabels = { 60: '1 דקה', 90: 'דקה וחצי', 120: '2 דקות', 180: '3 דקות' };
   const rest    = restLabels[restSec] || '2 דקות';
-  const hasSs   = document.getElementById('ef-superset').checked;
-  let supersetId = null;
-  if (hasSs) {
-    const sid = document.getElementById('ef-ss-id').value.trim();
-    supersetId = sid || `${type}_ss_${Date.now()}`;
+
+  const rows = container.querySelectorAll('.ef-ex-row');
+  const newExercises = [];
+  let valid = true;
+  rows.forEach(row => {
+    const nameEl = row.querySelector('.ef-row-name');
+    const name   = nameEl.value.trim();
+    if (!name) { nameEl.focus(); valid = false; return; }
+    const target = row.querySelector('.ef-row-target').value.trim() || '8–12';
+    const unit   = row.querySelector('.ef-row-unit').value;
+    newExercises.push({ name, sets, target, unit, restSec, rest, type: unit === 'שניות' ? 'seconds' : 'reps', supersetId: null });
+  });
+  if (!valid) return;
+
+  // If >1 exercise, assign shared supersetId
+  if (newExercises.length > 1) {
+    const sid = `${type}_ss_${Date.now()}`;
+    newExercises.forEach(e => { e.supersetId = sid; });
   }
 
-  const exObj = { name, sets, target, unit, restSec, rest, type: unit === 'שניות' ? 'seconds' : 'reps', supersetId };
-
   const exercises = window._pendingPlan[type].exercises;
-  if (idx >= 0) {
-    exercises[idx] = exObj;
+
+  if (!groupIndices || groupIndices.length === 0) {
+    // New exercises — append
+    newExercises.forEach(e => exercises.push(e));
   } else {
-    exercises.push(exObj);
+    // Replace old group — insert new exercises at position of first index, remove old ones
+    const insertAt = groupIndices[0];
+    // Remove old (in reverse order to preserve indices)
+    [...groupIndices].sort((a,b) => b - a).forEach(i => exercises.splice(i, 1));
+    exercises.splice(insertAt, 0, ...newExercises);
   }
 
   closeExerciseForm();
@@ -2516,9 +2674,9 @@ function init() {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
-  // Show setup if no plan saved yet, otherwise go home
+  // Show level selector if no plan saved yet, otherwise go home
   if (!hasSavedPlan()) {
-    showSetup();
+    showLevelSelect();
   } else {
     render('home');
   }

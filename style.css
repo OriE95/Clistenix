@@ -1192,6 +1192,67 @@ html, body {
   margin-top: 8px;
 }
 
+/* ── Level Selector ─────────────────────────── */
+
+.level-select-grid {
+  display: flex;
+  gap: 14px;
+  width: 100%;
+  margin: 20px 0 8px;
+}
+
+.level-card {
+  flex: 1;
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: var(--r);
+  padding: 22px 12px 16px;
+  cursor: pointer;
+  transition: border-color 0.18s, background 0.18s, transform 0.12s;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.level-card:active { transform: scale(0.97); }
+
+.level-card.active,
+.level-card:hover {
+  border-color: var(--p);
+  background: var(--p-dim);
+}
+
+.level-card-badge {
+  font-family: var(--f-head);
+  font-size: 34px;
+  color: var(--p);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.level-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t);
+  margin-bottom: 6px;
+}
+
+.level-card-desc {
+  font-size: 11px;
+  color: var(--t-sub);
+  line-height: 1.6;
+}
+
+.level-card-check {
+  margin-top: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--p);
+  background: rgba(12,166,120,0.12);
+  border-radius: 20px;
+  padding: 2px 10px;
+  display: inline-block;
+}
+
 /* ── Plan Builder ────────────────────────────── */
 
 .plan-tabs {
@@ -1489,6 +1550,54 @@ html, body {
 
 .ex-form-cancel:active,
 .ex-form-save:active { opacity: 0.8; }
+
+/* Exercise rows within the form */
+.ef-ex-row {
+  background: var(--card2);
+  border-radius: var(--r-xs);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.ef-ex-row-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ef-ex-row-header .ex-form-input {
+  flex: 1;
+}
+
+.ef-ex-row-del {
+  border: none;
+  background: none;
+  color: var(--t-dim);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.ef-ex-row-del:active { color: var(--red); }
+
+/* Add row button */
+.ef-add-row-btn {
+  width: 100%;
+  padding: 9px;
+  border: 1.5px dashed var(--border-v);
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--p);
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin: 4px 0 16px;
+  transition: background 0.15s;
+}
+.ef-add-row-btn:active { background: var(--p-dim); }
 
 /* Ghost button for setup */
 .big-btn-ghost {
