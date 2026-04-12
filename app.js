@@ -2047,12 +2047,12 @@ function viewNutritionToday() {
     </span>
   </div>`;
   const remainProtein = +(Math.max(0, t.protein - totals.protein)).toFixed(1);
+  const remainCal     = Math.max(0, t.cal - totals.cal);
   const proteinHint = remainProtein > 0 && t.cal > 0 && t.protein > 0 ? (() => {
-    const R = (t.cal / t.protein).toFixed(1);
-    const Y = Math.round(remainProtein * t.cal / t.protein);
+    const R = (remainCal / remainProtein).toFixed(1);
     return `<div class="protein-hint-row">
       עליך לאכול עוד <strong>${remainProtein}g חלבון</strong>
-      &nbsp;·&nbsp; ביחס <strong>${R} קל/g</strong> זה <strong>${Y} קל</strong>
+      &nbsp;·&nbsp; ביחס <strong>${R} קל/g</strong> זה <strong>${Math.round(remainCal)} קל</strong>
     </div>`;
   })() : '';
 
