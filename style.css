@@ -368,6 +368,8 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .week-lbl {
@@ -395,6 +397,123 @@ html, body {
 .week-dot.done-b    { background: rgba(59,130,246,0.12); border-color: #3b82f6;       color: #3b82f6;     }
 .week-dot.done-legs { background: rgba(124,92,191,0.12); border-color: var(--purple); color: var(--purple); }
 .week-dot.today     { border-color: var(--gold); color: var(--gold); }
+.week-dot.planned   { border-style: dashed; border-color: var(--t-dim); }
+.week-plan-lbl      { font-size: 9px; color: var(--t-dim); position: absolute; }
+.week-dot.planned   { position: relative; }
+
+.week-grid-hint { font-size: 10px; color: var(--t-dim); font-weight: 400; }
+
+/* ── Day Picker overlay ─────────────────────── */
+.day-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: calc(var(--nav-h) + 8px);
+}
+
+.day-picker-card {
+  background: var(--surface);
+  border-radius: var(--r) var(--r) 0 0;
+  padding: 20px 18px 16px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: slideUp 0.2s ease;
+}
+
+.day-picker-title {
+  font-family: var(--f-head);
+  font-size: 18px;
+  color: var(--t);
+  text-align: center;
+  margin-bottom: 2px;
+}
+
+.day-picker-section-lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t-sub);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.day-picker-type-row,
+.day-picker-retro-row {
+  display: flex;
+  gap: 6px;
+}
+
+.day-picker-type {
+  flex: 1;
+  padding: 8px 4px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-sub);
+  cursor: pointer;
+  font-family: var(--f-body);
+  transition: all 0.15s;
+}
+
+.day-picker-type.plan-active,
+.day-picker-type:hover {
+  border-color: var(--p);
+  color: var(--p);
+  background: var(--p-dim);
+}
+
+.day-picker-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+.day-picker-done {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--p);
+  text-align: center;
+  padding: 6px 0;
+}
+
+.day-picker-del {
+  background: none;
+  border: 1.5px solid var(--red);
+  color: var(--red);
+  border-radius: var(--r-sm);
+  padding: 7px;
+  font-size: 13px;
+  font-family: var(--f-body);
+  cursor: pointer;
+  width: 100%;
+}
+
+.day-picker-close {
+  background: var(--card2);
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--f-body);
+  color: var(--t-sub);
+  cursor: pointer;
+  width: 100%;
+  margin-top: 2px;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(60px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
 
 /* Last measurement mini */
 .meas-row {
@@ -2304,6 +2423,81 @@ html, body {
 /* ══════════════════════════════════════════════
    COUNTDOWN SCREEN
    ══════════════════════════════════════════════ */
+
+/* ── Warm-up Screen ─────────────────────────── */
+.warmup-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 20px 24px;
+  min-height: calc(100dvh - var(--hdr-h) - var(--nav-h) - 32px);
+}
+
+.warmup-label-top {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--p);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 8px 0 14px;
+}
+
+.warmup-dots {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.warmup-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.2s;
+}
+
+.warmup-dot.done   { background: var(--p-dk); }
+.warmup-dot.active { background: var(--p); transform: scale(1.3); }
+
+.warmup-ex-num {
+  font-size: 12px;
+  color: var(--t-dim);
+  margin-bottom: 6px;
+}
+
+.warmup-ex-name {
+  font-family: var(--f-head);
+  font-size: 26px;
+  color: var(--t);
+  text-align: center;
+  margin-bottom: 10px;
+  line-height: 1.2;
+}
+
+.warmup-anim-wrap {
+  width: 160px;
+  height: 160px;
+  margin: 4px 0 6px;
+  flex-shrink: 0;
+}
+
+.warmup-anim-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.warmup-timer-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.warmup-mini-ring {
+  width: 88px;
+  height: 88px;
+  overflow: visible;
+}
 
 .countdown-view {
   display: flex;

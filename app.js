@@ -63,6 +63,18 @@ const DEFAULT_LINKS = {
   referral:  'https://bit.ly/4euKJCl',
 };
 
+// ── Upper-body Warm-up Sequence ──────────────
+const UPPER_WARMUP = [
+  { name: 'סיבובי חזה',                  secs: 40 },
+  { name: 'סיבובי כתפיים',               secs: 40 },
+  { name: 'סיבובי עמוד שדרה',            secs: 40 },
+  { name: 'סיבובי צוואר',               secs: 40 },
+  { name: 'סיבובי מפרקי כפות ידיים',    secs: 40 },
+  { name: 'גמישות לכפות הידיים',        secs: 40 },
+  { name: 'שכיבות סמיכה',               secs: 40 },
+  { name: 'מתח אוסטרלי',                secs: 40 },
+];
+
 // ── Level-based Plans ────────────────────────
 const LEVEL_PLANS = {
   '0': DEFAULT_PLANS,
@@ -196,6 +208,8 @@ const state = {
   progressCharts: {},   // Chart.js instances for exercise progress
   meta:           { name: '', stage: '' }, // trainee info from PDF
   level:          '0',  // current plan level ('0' | '0.3')
+  schedule:       {},   // dayOfWeek (0=Sun) → 'A'|'B'|'legs'|null
+  dayPickerDate:  null, // date string currently being assigned in picker
   progressTab:    false, // true = show progress charts in history
   // ── Nutrition ──────────────────────────────
   nutritionTargets: null, // { cal, protein, carbs, fat }
@@ -217,6 +231,7 @@ const state = {
 function save() {
   localStorage.setItem('cali_workouts',      JSON.stringify(state.workouts));
   localStorage.setItem('cali_measurements',  JSON.stringify(state.measurements));
+  localStorage.setItem('cali_schedule',      JSON.stringify(state.schedule));
 }
 
 function load() {
@@ -238,6 +253,8 @@ function load() {
   if (mt) state.meta = JSON.parse(mt);
   const lv = localStorage.getItem('cali_level');
   state.level = lv || '0';
+  const sc = localStorage.getItem('cali_schedule');
+  state.schedule = sc ? JSON.parse(sc) : {};
 }
 
 function saveNutrition() {
@@ -316,15 +333,31 @@ function weekWorkouts() {
 }
 
 function streak() {
-  if (!state.workouts.length) return 0;
-  const dates = new Set(state.workouts.map(w => w.date));
-  const today = new Date(); today.setHours(0,0,0,0);
-  const yd = new Date(today); yd.setDate(today.getDate() - 1);
-  if (!dates.has(dateStr(today)) && !dates.has(dateStr(yd))) return 0;
-  let s = 0, cur = new Date(today);
-  while (dates.has(dateStr(cur))) {
+  const main = state.workouts.filter(w => w.type === 'A' || w.type === 'B');
+  if (!main.length) return 0;
+
+  // Count main workouts per week (keyed by Sunday date string)
+  const weekCounts = {};
+  main.forEach(w => {
+    const d = new Date(w.date + 'T00:00:00');
+    const sun = new Date(d);
+    sun.setDate(d.getDate() - d.getDay());
+    const wk = dateStr(sun);
+    weekCounts[wk] = (weekCounts[wk] || 0) + 1;
+  });
+
+  // Walk backwards from current week
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const curSun = new Date(now);
+  curSun.setDate(now.getDate() - now.getDay());
+
+  let s = 0, cur = new Date(curSun);
+  // If current week is incomplete, start checking from previous week
+  if ((weekCounts[dateStr(cur)] || 0) < 3) cur.setDate(cur.getDate() - 7);
+
+  while ((weekCounts[dateStr(cur)] || 0) >= 3) {
     s++;
-    cur.setDate(cur.getDate() - 1);
+    cur.setDate(cur.getDate() - 7);
   }
   return s;
 }
@@ -340,10 +373,16 @@ function goTo(tab) {
 function render(tab) {
   const main = document.getElementById('main-content');
   stopTimer();
-  // Stop countdown if navigating away from workout
-  if (tab !== 'workout' && state.active && state.active.countdownInterval) {
-    clearInterval(state.active.countdownInterval);
-    state.active.countdownInterval = null;
+  // Stop warmup/countdown timers if navigating away from workout
+  if (tab !== 'workout' && state.active) {
+    if (state.active.warmupInterval) {
+      clearInterval(state.active.warmupInterval);
+      state.active.warmupInterval = null;
+    }
+    if (state.active.countdownInterval) {
+      clearInterval(state.active.countdownInterval);
+      state.active.countdownInterval = null;
+    }
   }
   // Reset transient nutrition UI when leaving the tab
   if (tab !== 'nutrition') {
@@ -403,19 +442,28 @@ function viewHome() {
   const sun = new Date(today);
   sun.setDate(today.getDate() - today.getDay());
   const cols = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(sun); d.setDate(sun.getDate() + i);
+    const d   = new Date(sun); d.setDate(sun.getDate() + i);
     const ds  = dateStr(d);
+    const dow = d.getDay();
     const wkt = state.workouts.find(w => w.date === ds);
     const isT = ds === tdStr;
+    const plan = state.schedule[dow] || null; // planned workout for this weekday
     let cls = 'week-dot';
     let content = '';
+    let planned = '';
     if (wkt) {
       cls += ` done-${wkt.type.toLowerCase()}`;
       content = wkt.type === 'legs' ? 'ר' : wkt.type;
-    } else if (isT) cls += ' today';
-    return `<div class="week-col">
+    } else {
+      if (isT) cls += ' today';
+      if (plan) {
+        cls += ' planned';
+        planned = `<span class="week-plan-lbl">${plan === 'legs' ? 'ר' : plan}</span>`;
+      }
+    }
+    return `<div class="week-col" onclick="openDayPicker('${ds}', ${dow})" title="${DAYS_FULL[i]}">
       <span class="week-lbl">${DAYS_SHORT[i]}</span>
-      <div class="${cls}">${content}</div>
+      <div class="${cls}">${content}${planned}</div>
     </div>`;
   }).join('');
 
@@ -448,14 +496,17 @@ function viewHome() {
       </div>
       <div class="stat-card">
         <div class="stat-val">${str}</div>
-        <div class="stat-lbl">רצף ימים</div>
+        <div class="stat-lbl">רצף שבועות</div>
       </div>
       <div class="stat-card">
         <div class="stat-val">${ww.length}</div>
         <div class="stat-lbl">השבוע</div>
       </div>
     </div>
-    <div class="sec-label">השבוע הנוכחי</div>
+    <div class="sec-label" style="display:flex;justify-content:space-between;align-items:center">
+      <span>השבוע הנוכחי</span>
+      <span class="week-grid-hint">לחץ על יום לשיבוץ</span>
+    </div>
     <div class="week-grid">${cols}</div>
     ${measHTML}
     ${(state.workouts.length || state.measurements.length) ? `
@@ -468,6 +519,93 @@ function viewHome() {
 function goToWorkoutTab(type) {
   state.selType = type;
   goTo('workout');
+}
+
+// ══════════════════════════════════════════════
+//  DAY PICKER — assign workout / log retroactively
+// ══════════════════════════════════════════════
+function openDayPicker(dateStr, dow) {
+  // Remove existing picker if any
+  document.getElementById('day-picker-overlay')?.remove();
+
+  const existing = state.workouts.find(w => w.date === dateStr);
+  const plan = state.schedule[dow] || null;
+  const typeOpts = [
+    { id: 'A',    label: 'אימון A' },
+    { id: 'B',    label: 'אימון B' },
+    { id: 'legs', label: 'רגליים' },
+    { id: 'rest', label: 'מנוחה'  },
+  ];
+
+  const typeBtns = typeOpts.map(o => {
+    const isPlan = plan === o.id || (o.id === 'rest' && !plan);
+    return `<button class="day-picker-type${isPlan ? ' plan-active' : ''}"
+      onclick="setDaySchedule('${dateStr}', ${dow}, '${o.id}')">${o.label}</button>`;
+  }).join('');
+
+  const retroBtn = existing
+    ? `<div class="day-picker-done">✓ אימון ${existing.type === 'legs' ? 'רגליים' : existing.type} בוצע</div>
+       <button class="day-picker-del" onclick="deleteRetroWorkout('${dateStr}')">מחק אימון זה</button>`
+    : `<div class="day-picker-section-lbl">סמן ביצוע בדיעבד</div>
+       <div class="day-picker-retro-row">
+         ${typeOpts.filter(o => o.id !== 'rest').map(o =>
+           `<button class="day-picker-type" onclick="logRetroWorkout('${dateStr}', '${o.id}')">${o.label}</button>`
+         ).join('')}
+       </div>`;
+
+  const d = dateStr.split('-');
+  const dispDate = `${parseInt(d[2])} ${['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'][parseInt(d[1])-1]}`;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'day-picker-overlay';
+  overlay.className = 'day-picker-overlay';
+  overlay.innerHTML = `
+    <div class="day-picker-card">
+      <div class="day-picker-title">${dispDate}</div>
+      <div class="day-picker-section-lbl">שבץ לכל שבוע ביום זה</div>
+      <div class="day-picker-type-row">${typeBtns}</div>
+      <div class="day-picker-divider"></div>
+      ${retroBtn}
+      <button class="day-picker-close" onclick="document.getElementById('day-picker-overlay')?.remove()">סגור</button>
+    </div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.getElementById('app').appendChild(overlay);
+}
+
+function setDaySchedule(_ds, dow, type) {
+  if (type === 'rest') {
+    delete state.schedule[dow];
+  } else {
+    state.schedule[dow] = type;
+  }
+  save();
+  document.getElementById('day-picker-overlay')?.remove();
+  render('home');
+}
+
+function logRetroWorkout(ds, type) {
+  // Remove any existing workout on that date first
+  state.workouts = state.workouts.filter(w => w.date !== ds);
+  state.workouts.push({
+    id:        Date.now(),
+    date:      ds,
+    type,
+    duration:  0,
+    retro:     true,
+    exercises: []
+  });
+  save();
+  document.getElementById('day-picker-overlay')?.remove();
+  render('home');
+  toast('האימון סומן ✓');
+}
+
+function deleteRetroWorkout(ds) {
+  state.workouts = state.workouts.filter(w => w.date !== ds);
+  save();
+  document.getElementById('day-picker-overlay')?.remove();
+  render('home');
+  toast('האימון נמחק');
 }
 
 // ══════════════════════════════════════════════
@@ -562,7 +700,9 @@ function selType(t) {
 }
 
 function startWorkout() {
-  const plan = PLANS[state.selType];
+  const plan      = PLANS[state.selType];
+  const isUpper   = state.selType === 'A' || state.selType === 'B';
+  const initPhase = isUpper ? 'warmup' : 'countdown';
   state.active = {
     type:                     state.selType,
     startTime:                Date.now(),
@@ -576,17 +716,24 @@ function startWorkout() {
       sets:       Array.from({ length: ex.sets }, () => ({ value: '', done: false }))
     })),
     exIdx:                    0,
-    phase:                    'countdown',
+    phase:                    initPhase,
+    // warmup state
+    warmupExercises:          isUpper ? [...UPPER_WARMUP] : [],
+    warmupIdx:                0,
+    warmupSecs:               isUpper ? UPPER_WARMUP[0].secs : 0,
+    warmupInterval:           null,
+    // countdown state
     countdownSecs:            20,
     countdownInterval:        null,
-    resting:                  false,   // rest between sets
-    restingBetweenExercises:  false,   // rest between exercises
+    resting:                  false,
+    restingBetweenExercises:  false,
     lastSetAnimation:         false,
   };
   render('workout');
 }
 
 function viewActiveWorkout() {
+  if (state.active.phase === 'warmup')    return viewWarmupScreen();
   if (state.active.phase === 'countdown') return viewCountdownScreen();
   return viewCurrentExercise();
 }
@@ -612,6 +759,127 @@ function viewCountdownScreen() {
       <button class="timer-btn skip" style="margin-top:24px" onclick="skipCountdown()">דלג ←</button>
     </div>
   </div>`;
+}
+
+// ── Warm-up Screen ───────────────────────────
+// ── Exercise animations (SVG stick figure) ───
+function getWarmupAnimation(name) {
+  const p = "var(--p)";
+  const stroke = `stroke="${p}" stroke-width="2.5" stroke-linecap="round"`;
+
+  // Shared stick-figure parts
+  const head  = `<circle cx="60" cy="14" r="9" fill="none" stroke="${p}" stroke-width="2.5"/>`;
+  const body  = `<line x1="60" y1="23" x2="60" y2="78" ${stroke}/>`;
+  const legL  = `<line x1="60" y1="78" x2="44" y2="112" ${stroke}/>`;
+  const legR  = `<line x1="60" y1="78" x2="76" y2="112" ${stroke}/>`;
+  const base  = head + body + legL + legR;
+
+  switch (name) {
+    case 'סיבובי חזה':
+      // Arms start crossed on chest → open wide to sides → repeat
+      return `<svg viewBox="0 0 120 130" class="warmup-anim-svg" xmlns="http://www.w3.org/2000/svg">
+        ${base}
+        <!-- Right arm: from right shoulder (78,42) → crosses to left when closed, extends right when open -->
+        <line x1="78" y1="42" ${stroke}>
+          <animate attributeName="x2" values="34;106;34" dur="2s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/>
+          <animate attributeName="y2" values="56;42;56" dur="2s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/>
+        </line>
+        <!-- Left arm: from left shoulder (42,42) → crosses to right when closed, extends left when open -->
+        <line x1="42" y1="42" ${stroke}>
+          <animate attributeName="x2" values="86;14;86" dur="2s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/>
+          <animate attributeName="y2" values="56;42;56" dur="2s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/>
+        </line>
+      </svg>`;
+
+    default:
+      // Fallback: simple idle pose (arms slightly down)
+      return `<svg viewBox="0 0 120 130" class="warmup-anim-svg" xmlns="http://www.w3.org/2000/svg">
+        ${base}
+        <line x1="60" y1="42" x2="90" y2="60" ${stroke}/>
+        <line x1="60" y1="42" x2="30" y2="60" ${stroke}/>
+      </svg>`;
+  }
+}
+
+function viewWarmupScreen() {
+  const a     = state.active;
+  const idx   = a.warmupIdx;
+  const total = a.warmupExercises.length;
+  const ex    = a.warmupExercises[idx];
+  const secs  = a.warmupSecs;
+  const pct   = Math.round((secs / ex.secs) * 100);
+  const circ  = +(2 * Math.PI * 38).toFixed(1);
+
+  const dots = Array.from({ length: total }, (_, i) =>
+    `<span class="warmup-dot${i < idx ? ' done' : i === idx ? ' active' : ''}"></span>`
+  ).join('');
+
+  const anim = getWarmupAnimation(ex.name);
+
+  return `<div class="view warmup-view">
+    <button class="back-to-sel-btn" onclick="skipWarmup()">דלג על חימום ←</button>
+    <div class="warmup-label-top">חימום פלג גוף עליון</div>
+    <div class="warmup-dots">${dots}</div>
+    <div class="warmup-ex-num">${idx + 1} / ${total}</div>
+    <div class="warmup-ex-name">${ex.name}</div>
+    <div class="warmup-anim-wrap">${anim}</div>
+    <div class="warmup-timer-row">
+      <svg viewBox="0 0 90 90" class="warmup-mini-ring">
+        <circle cx="45" cy="45" r="38" fill="none" stroke="var(--border)" stroke-width="6"/>
+        <circle cx="45" cy="45" r="38" fill="none" stroke="var(--p)" stroke-width="6"
+          stroke-linecap="round"
+          stroke-dasharray="${circ}"
+          stroke-dashoffset="${+(circ*(1-pct/100)).toFixed(1)}"
+          transform="rotate(-90 45 45)"
+          style="transition:stroke-dashoffset 0.9s linear"/>
+        <text x="45" y="50" text-anchor="middle" fill="var(--t)"
+          style="font-family:var(--f-head);font-size:20px" id="warmup-secs-txt">${secs}</text>
+      </svg>
+    </div>
+    <button class="timer-btn skip" style="margin-top:8px" onclick="advanceWarmup()">
+      ${idx < total - 1 ? 'הבא →' : 'סיים חימום →'}
+    </button>
+  </div>`;
+}
+
+function startWarmupTimer() {
+  if (state.active.warmupInterval) clearInterval(state.active.warmupInterval);
+  state.active.warmupInterval = setInterval(() => {
+    state.active.warmupSecs--;
+    const el = document.getElementById('warmup-secs-txt');
+    if (el) el.textContent = Math.max(0, state.active.warmupSecs);
+    if (state.active.warmupSecs <= 0) {
+      advanceWarmup();
+    }
+  }, 1000);
+}
+
+function advanceWarmup() {
+  if (state.active.warmupInterval) {
+    clearInterval(state.active.warmupInterval);
+    state.active.warmupInterval = null;
+  }
+  const next = state.active.warmupIdx + 1;
+  if (next < state.active.warmupExercises.length) {
+    state.active.warmupIdx  = next;
+    state.active.warmupSecs = state.active.warmupExercises[next].secs;
+    render('workout');
+  } else {
+    // Warmup done → go straight to workout (skip the countdown)
+    state.active.phase   = 'workout';
+    state.active.resting = false;
+    render('workout');
+  }
+}
+
+function skipWarmup() {
+  if (state.active.warmupInterval) {
+    clearInterval(state.active.warmupInterval);
+    state.active.warmupInterval = null;
+  }
+  state.active.phase   = 'workout';
+  state.active.resting = false;
+  render('workout');
 }
 
 // Build the SVG arm progress ring
@@ -774,6 +1042,9 @@ function viewCurrentExercise() {
 
 function bindWorkout() {
   if (!state.active) return;
+  if (state.active.phase === 'warmup' && !state.active.warmupInterval) {
+    startWarmupTimer();
+  }
   if (state.active.phase === 'countdown' && !state.active.countdownInterval) {
     startCountdownTimer();
   }
@@ -2036,7 +2307,8 @@ function viewNutritionToday() {
   const totals  = todayTotals();
   const entries = todayFoodLog();
 
-  const targetRatio  = t.protein > 0 ? (t.cal / t.protein).toFixed(1) : null;
+  const baseProtein  = t.proteinMin || t.protein;  // use minimum as the ratio baseline
+  const targetRatio  = baseProtein > 0 ? (t.cal / baseProtein).toFixed(1) : null;
   const todayRatio   = totals.protein > 0 ? (totals.cal / totals.protein).toFixed(1) : null;
   const ratioRow = `<div class="cal-protein-ratio-row">
     <span class="cal-protein-ratio-label">יחס קל/חלבון</span>
@@ -2046,9 +2318,9 @@ function viewNutritionToday() {
       היום: ${todayRatio ? `<b>${todayRatio}</b>` : '—'}
     </span>
   </div>`;
-  const remainProtein = +(Math.max(0, t.protein - totals.protein)).toFixed(1);
+  const remainProtein = +(Math.max(0, baseProtein - totals.protein)).toFixed(1);
   const remainCal     = Math.max(0, t.cal - totals.cal);
-  const proteinHint = remainProtein > 0 && t.cal > 0 && t.protein > 0 ? (() => {
+  const proteinHint = remainProtein > 0 && t.cal > 0 && baseProtein > 0 ? (() => {
     const R = (remainCal / remainProtein).toFixed(1);
     return `<div class="protein-hint-row">
       עליך לאכול עוד <strong>${remainProtein}g חלבון</strong>
